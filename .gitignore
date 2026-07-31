@@ -1,0 +1,8 @@
+# Obsidian per-device workspace state
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+
+# Operating system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
