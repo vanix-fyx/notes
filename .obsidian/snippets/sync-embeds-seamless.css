@@ -1,0 +1,49 @@
+/*
+ * 让 Sync Embeds 同步块显示得像普通笔记正文
+ */
+
+/* 去掉最外层卡片的边框、背景、圆角和空白 */
+.sync-container {
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+}
+
+/* 去掉同步内容获得焦点时的外框 */
+.sync-embed {
+    border: none !important;
+    border-radius: 0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.sync-embed:focus-within {
+    outline: none !important;
+}
+
+/* 去掉插件给正文增加的左右内边距 */
+.sync-embed .cm-content {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+/* 去掉同步内容顶部额外的空白 */
+.sync-embed .cm-contentContainer {
+    padding-top: 0 !important;
+}
+
+/* 防止插件标题产生额外缩进 */
+.sync-embed-header {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}

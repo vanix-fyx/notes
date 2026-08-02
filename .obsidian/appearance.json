@@ -1,1 +1,5 @@
-{}
+{
+  "enabledCssSnippets": [
+    "sync-embeds-seamless"
+  ]
+}
