@@ -4817,9 +4817,7 @@ str_delete(str, 2, 3);
  */
 ```
 
-
-
-### 10.2.2 内存相关函数
+### 10.2.2 动态内存管理
 
 #### calloc
 
@@ -4897,6 +4895,45 @@ array = malloc(10 * sizeof(int));
  * 申请失败时，值为 NULL。
  */
 ```
+### 10.2.3 内存操作
+#### memcpy
+
+```c
+#include <string.h>
+
+/**
+ * @brief  将源内存中的指定字节复制到目标内存中。
+ *         源内存和目标内存不能重叠。
+ *
+ * @param  dest: 目标内存的起始地址。
+ *
+ * @param  src: 源内存的起始地址。
+ *
+ * @param  n: 要复制的字节数。
+ *
+ * @retval 返回目标内存的起始地址 dest。
+ */
+void *memcpy(void *dest, const void *src, size_t n);
+```
+
+代码示例：
+
+```c
+int src[3]  = {1, 2, 3};
+int dest[3] = {0};
+
+memcpy(dest, src, sizeof(src));
+
+/*
+ * 将 src 中的所有数据复制到 dest 中。
+ *
+ * 复制结果：
+ * dest[0] = 1
+ * dest[1] = 2
+ * dest[2] = 3
+ */
+```
+
 
 # 11 第三方库与组件
 
@@ -5723,8 +5760,367 @@ bitmap：
 ```
 
 ---
+## 11.2.2 数据类型
+
+### `struct tsdev`
+
+`struct tsdev` 表示一个由 tslib 管理的触摸屏设备。
+
+它属于**不透明结构体**：`tslib.h` 中只声明了这个结构体，没有公开它的内部成员。因此，应用程序不能直接访问其内部成员，只能通过 `ts_setup()`、`ts_fd()`、`ts_read_mt()`、`ts_close()` 等 tslib 函数操作它。
+
+```c
+/**
+ * @brief tslib 触摸屏设备对象。
+ *
+ * struct tsdev 的内部成员没有在 tslib.h 中公开。
+ * 程序一般只声明 struct tsdev 指针。
+ *
+ * 必需头文件：
+ * #include <tslib.h>
+ */
+
+#include <tslib.h>
+
+/* tslib.h 中的结构体声明 */
+struct tsdev;
+
+/* 常用的变量声明形式 */
+struct tsdev *ts;
+```
+
+代码示例：
+
+```c
+/* ts_setup() 成功后，ts 指向一个 tslib 触摸屏设备对象 */
+struct tsdev *ts = ts_setup(NULL, 0);
+
+if (ts != NULL) {
+    /* 此处可以使用 ts 调用其他 tslib 函数 */
+
+    ts_close(ts);
+}
+```
+
+---
+
+### `struct ts_sample_mt`
+
+`struct ts_sample_mt` 用来保存一个多点触摸槽位的采样数据，例如坐标、压力、槽位编号、触点跟踪编号和数据是否有效。
+
+源文件中实际使用了以下成员：
+
+| 成员            | 在源文件中的作用          |
+| ------------- | ----------------- |
+| `x`           | 保存触点的 X 坐标        |
+| `y`           | 保存触点的 Y 坐标        |
+| `tracking_id` | 源文件通过它判断槽位中是否存在触点 |
+| `valid`       | 判断本次读取是否包含该槽位的新数据 |
+
+```c
+/**
+ * @brief 保存一个多点触摸槽位的采样数据。
+ *
+ * 必需头文件：
+ * #include <tslib.h>
+ */
+
+#include <tslib.h>
+
+struct ts_sample_mt {
+    int x;                       /* X 坐标 */
+    int y;                       /* Y 坐标 */
+    unsigned int pressure;       /* 压力值 */
+
+    int slot;                    /* 触摸槽位编号 */
+    int tracking_id;             /* 触点跟踪编号 */
+    int tool_type;               /* 触摸工具类型 */
+
+    int tool_x;                  /* 触摸工具的 X 坐标 */
+    int tool_y;                  /* 触摸工具的 Y 坐标 */
+
+    unsigned int touch_major;    /* 触摸区域主轴大小 */
+    unsigned int width_major;    /* 触摸工具主轴宽度 */
+    unsigned int touch_minor;    /* 触摸区域次轴大小 */
+    unsigned int width_minor;    /* 触摸工具次轴宽度 */
+
+    int orientation;             /* 触摸区域方向 */
+    int distance;                /* 工具与触摸表面的距离 */
+    int blob_id;                 /* 触点集合编号 */
+
+    struct timeval tv;           /* 事件时间 */
+
+    short pen_down;              /* BTN_TOUCH 状态 */
+    short valid;                 /* 本次采样是否包含新数据 */
+};
+```
+
+代码示例：
+
+```c
+/* 定义并初始化一个多点触摸采样数据 */
+struct ts_sample_mt point = {0};
+
+/* 设置当前触点的数据 */
+point.x = 629;
+point.y = 364;
+point.tracking_id = 10;
+point.valid = 1;
+
+/* 数据有效并且当前槽位中存在触点时，读取坐标 */
+if (point.valid && point.tracking_id != -1) {
+    int x = point.x;
+    int y = point.y;
+}
+```
+
+## 11.2.3 函数
+
+### `ts_setup()`
+
+`ts_setup()` 用来寻找、打开并配置触摸屏设备。
+
+调用后，tslib 会尝试完成以下操作：
+
+1. 查找触摸屏输入设备。
+    
+2. 打开触摸屏设备。
+    
+3. 读取 tslib 配置文件。
+    
+4. 加载并初始化配置文件中的模块。
+    
+
+当 `dev_name` 为 `NULL` 时，tslib 会先检查 `TSLIB_TSDEVICE` 环境变量；如果没有设置，再尝试查找默认触摸设备。
+
+参数说明：
+
+|参数|含义|
+|---|---|
+|`dev_name`|触摸屏设备路径；传入 `NULL` 时由 tslib 查找设备|
+|`nonblock`|是否使用非阻塞方式；`0` 表示阻塞方式|
+
+成功时返回一个 `struct tsdev` 指针。源文件通过判断返回值是否为 `NULL` 来判断调用是否失败。
+
+```c
+/**
+ * @brief 寻找、打开并配置触摸屏设备。
+ *
+ * @param dev_name 触摸屏设备路径。
+ *                 传入 NULL 时，由 tslib 查找触摸设备。
+ *
+ * @param nonblock 是否使用非阻塞方式。
+ *                 0：阻塞方式。
+ *                 非 0：非阻塞方式。
+ *
+ * @return 成功：返回 struct tsdev 指针。
+ * @return 失败：返回 NULL。
+ *
+ * 必需头文件：
+ * #include <tslib.h>
+ */
+
+#include <tslib.h>
+
+struct tsdev *ts_setup(const char *dev_name, int nonblock);
+```
+
+代码示例：
+
+```c
+/* NULL：由 tslib 查找设备；0：使用阻塞方式 */
+struct tsdev *ts = ts_setup(NULL, 0);
+
+if (ts == NULL) {
+    /* 触摸屏设备打开或配置失败 */
+}
+```
+
+---
+
+### `ts_fd()`
+
+`ts_fd()` 用来取得 tslib 当前打开的触摸屏设备文件描述符。
+
+由于 `struct tsdev` 的内部成员没有公开，程序不能直接从结构体中取得文件描述符，需要调用 `ts_fd()`。
+
+源文件先通过 `ts_setup()` 获得有效设备，再将 `ts_fd(ts)` 返回的文件描述符传给 `ioctl()`，用于查询触摸屏的多点触摸槽位范围。
+
+```c
+/**
+ * @brief 获取 tslib 当前使用的触摸屏设备文件描述符。
+ *
+ * @param ts 有效的 tslib 触摸屏设备指针。
+ *
+ * @return 返回触摸屏设备的文件描述符。
+ *
+ * 必需头文件：
+ * #include <tslib.h>
+ */
+
+#include <tslib.h>
+
+int ts_fd(struct tsdev *ts);
+```
+
+代码示例：
+
+```c
+/* 必须先获得一个有效的 tslib 设备 */
+struct tsdev *ts = ts_setup(NULL, 0);
+
+if (ts != NULL) {
+    int fd = ts_fd(ts);
+
+    /* 此处可以把 fd 传给 ioctl() 等系统调用 */
+
+    ts_close(ts);
+}
+```
+
+---
+
+### `ts_read_mt()`
+
+`ts_read_mt()` 用来读取经过 tslib 模块处理后的多点触摸数据。
+
+`samp` 可以理解成一个二维数据空间：
+
+```text
+samp[第几组采样数据][第几个触摸槽位]
+```
+
+参数说明：
+
+|参数|含义|
+|---|---|
+|`ts`|有效的 tslib 触摸屏设备|
+|`samp`|保存多点触摸数据的二维存储空间|
+|`slots`|每组数据包含的最大触摸槽位数|
+|`nr`|希望读取的采样组数|
+
+调用者必须提前准备能够保存 `nr × slots` 个 `struct ts_sample_mt` 的存储空间。
+
+函数成功时返回实际读取到的采样组数；失败时返回负数。
+
+源文件中的调用是：
+
+```text
+ts_read_mt(ts, samp_mt, max_slots, 1)
+```
+
+因此：
+
+- `nr` 为 `1`，每次读取一组数据。
+    
+- `samp_mt[0]` 表示第 1 组数据。
+    
+- `samp_mt[0][i]` 表示第 1 组数据中的第 `i` 个触摸槽位。
+    
+
+```c
+/**
+ * @brief 读取经过 tslib 处理的多点触摸数据。
+ *
+ * @param ts    有效的 tslib 触摸屏设备指针。
+ * @param samp  保存读取结果的二维数据空间。
+ * @param slots 每组数据包含的最大触摸槽位数。
+ * @param nr    希望读取的采样组数。
+ *
+ * @return 成功：返回实际读取到的采样组数。
+ * @return 失败：返回负数。
+ *
+ * 必需头文件：
+ * #include <tslib.h>
+ */
+
+#include <tslib.h>
+
+int ts_read_mt(struct tsdev *ts,
+               struct ts_sample_mt **samp,
+               int slots,
+               int nr);
+```
+
+代码示例：
+
+```c
+/************************** 读一组数据 **************************/
+struct ts_sample_mt **samp_mt;
+int max_slots = 5;
+
+samp_mt = malloc(sizeof(*samp_mt));
+samp_mt[0] = calloc(max_slots, sizeof(**samp_mt));
 
 
+if (samp_mt != NULL && samp_mt[0] != NULL) {
+    int ret = ts_read_mt(ts, samp_mt, max_slots, 1);
+}
+
+/************************** 读多组数据 **************************/
+int nr = 2;
+int i;
+
+struct ts_sample_mt **samp_mt;
+
+samp_mt = malloc(nr * sizeof(*samp_mt));
+
+for (i = 0; i < nr; i++) {
+    samp_mt[i] = calloc(max_slots, sizeof(**samp_mt));
+}
+
+if (samp_mt != NULL && samp_mt[0] != NULL) {
+    int ret = ts_read_mt(ts, samp_mt, max_slots, 1);
+}
+```
+
+---
+
+### `ts_close()`
+
+`ts_close()` 用来关闭触摸屏设备，并释放 tslib 为该设备分配的相关资源。
+
+只有在已经通过 `ts_setup()` 等函数获得有效 `struct tsdev` 指针后，才能调用 `ts_close()`。
+
+返回值：
+
+|返回值|含义|
+|---|---|
+|`0`|关闭成功|
+|负数|关闭失败|
+
+```c
+/**
+ * @brief 关闭触摸屏设备并释放相关资源。
+ *
+ * @param ts 有效的 tslib 触摸屏设备指针。
+ *
+ * @return 0：关闭成功。
+ * @return 负数：关闭失败。
+ *
+ * 必需头文件：
+ * #include <tslib.h>
+ */
+
+#include <tslib.h>
+
+int ts_close(struct tsdev *ts);
+```
+
+代码示例：
+
+```c
+/* 必须先打开并配置触摸屏设备 */
+struct tsdev *ts = ts_setup(NULL, 0);
+
+if (ts != NULL) {
+    /* 触摸屏使用完毕后再关闭 */
+    int ret = ts_close(ts);
+
+    if (ret < 0) {
+        /* 关闭触摸屏设备失败 */
+    }
+}
+```
 # 尾页
 
 # # 

@@ -1,19 +1,29 @@
 {
   "Linux/Linux学习笔记.md": {
     "expandedKeys": [
-      "item-1-0"
+      "item-1-0",
+      "item-1-214",
+      "item-2-235",
+      "item-3-236",
+      "item-2-242",
+      "item-2-245",
+      "item-1-202",
+      "item-2-204",
+      "item-3-209",
+      "item-3-205",
+      "item-3-212"
     ],
     "cursor": {
       "from": {
-        "line": 9,
+        "line": 4680,
         "ch": 0
       },
       "to": {
-        "line": 9,
+        "line": 4680,
         "ch": 0
       }
     },
-    "scroll": 0
+    "scroll": 4653.678570701963
   },
   "README.md": {
     "expandedKeys": []
@@ -64,6 +74,30 @@
     "scroll": 39.831162532170616
   },
   "_README/README.md": {
-    "expandedKeys": []
+    "expandedKeys": [],
+    "cursor": {
+      "from": {
+        "line": 1,
+        "ch": 0
+      },
+      "to": {
+        "line": 1,
+        "ch": 0
+      }
+    }
+  },
+  "_README/笔记格式提示词.md": {
+    "expandedKeys": [],
+    "scroll": 0,
+    "cursor": {
+      "from": {
+        "line": 27,
+        "ch": 0
+      },
+      "to": {
+        "line": 27,
+        "ch": 0
+      }
+    }
   }
 }
