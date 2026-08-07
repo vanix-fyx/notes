@@ -3840,8 +3840,96 @@ evbit    → 数组第一个元素的起始地址
  * EVIOCGBIT(EV_ABS, sizeof(absbit))
  */
 ```
+### `EVIOCGABS`
 
-### fd集合
+`EVIOCGABS(abs)` 用于生成一个 `ioctl` 请求码，用来**获取输入设备某个绝对坐标轴（ABS）的当前值和属性信息**。
+
+常用于查询：
+
+- `ABS_X`：X 轴
+    
+- `ABS_Y`：Y 轴
+    
+- `ABS_PRESSURE`：压力
+    
+- `ABS_MT_POSITION_X`：多点触摸 X 坐标
+    
+- `ABS_MT_POSITION_Y`：多点触摸 Y 坐标
+    
+- `ABS_MT_SLOT`：多点触摸槽位范围
+    
+
+查询结果保存到 `struct input_absinfo` 中。
+
+```c
+/**
+ * @brief 生成“获取绝对坐标轴信息”的 ioctl 请求码。
+ *
+ * @param abs 要查询的绝对坐标轴类型，
+ *            例如 ABS_X、ABS_Y、ABS_MT_SLOT。
+ *
+ * @note EVIOCGABS() 本身不会读取设备，
+ *       它只是生成 ioctl() 所需要的 request 参数。
+ *
+ * 查询结果通常保存到 struct input_absinfo 中：
+ *
+ * value       当前值
+ * minimum     最小值
+ * maximum     最大值
+ * fuzz        过滤微小抖动时使用的容差值
+ * flat        中心死区范围
+ * resolution  分辨率
+ *
+ * 必需头文件：
+ * #include <linux/input.h>
+ * #include <sys/ioctl.h>
+ */
+
+#include <linux/input.h>
+#include <sys/ioctl.h>
+
+#define EVIOCGABS(abs) \
+        _IOR('E', 0x40 + (abs), struct input_absinfo)
+
+/* 常用形式 */
+ioctl(fd, EVIOCGABS(abs), &absinfo);
+```
+
+代码示例：
+
+```c
+struct input_absinfo slot;
+
+/* 查询多点触摸 ABS_MT_SLOT 的信息 */
+if (ioctl(fd, EVIOCGABS(ABS_MT_SLOT), &slot) == 0) {
+    /* 根据槽位编号的最小值和最大值计算槽位数量 */
+    int max_slots = slot.maximum - slot.minimum + 1;
+}
+```
+
+这里：
+
+`EVIOCGABS(ABS_MT_SLOT)`  
+表示生成“查询 `ABS_MT_SLOT` 信息”的 `ioctl` 命令。
+
+`&slot`  
+用于接收内核返回的 `struct input_absinfo` 数据。
+
+例如：
+
+```text
+slot.minimum = 0
+slot.maximum = 4
+```
+
+则触摸槽位数量为：
+
+`4 - 0 + 1 = 5`
+
+因此：
+
+**`EVIOCGABS()` 决定“查询哪个 ABS 轴”，`ioctl()` 负责真正向驱动获取数据，`struct input_absinfo` 负责保存查询结果。**
+### fd_set相关
 
 #### FD_ZERO：清空集合
 
@@ -4060,7 +4148,76 @@ read(fd, &event, sizeof(event));
  * event.value = 2 表示按键自动重复。
  */
 ```
+### `struct input_absinfo`
 
+```c
+/**
+ * @brief 保存输入设备某个绝对坐标轴的当前值和属性信息。
+ *        例如可以配合：
+ *	          EVIOCGABS(ABS_X)、EVIOCGABS(ABS_Y)、EVIOCGABS(ABS_MT_SLOT) 等宏，
+ *			  通过 ioctl() 获取对应绝对轴的信息。
+ * value:
+ *     当前值。
+ *
+ * minimum:
+ *     该绝对轴能够取到的最小值。
+ *
+ * maximum:
+ *     该绝对轴能够取到的最大值。
+ *
+ * fuzz:
+ *     用于过滤输入数据微小抖动的容差值。
+ *
+ * flat:
+ *     中心无效区域（死区）范围。
+ *
+ * resolution:
+ *     该绝对轴的分辨率。
+ *
+ * 必需头文件：
+ * #include <linux/input.h>
+ */
+
+#include <linux/input.h>
+
+struct input_absinfo {
+    __s32 value;         /* 当前值 */
+    __s32 minimum;       /* 最小值 */
+    __s32 maximum;       /* 最大值 */
+    __s32 fuzz;          /* 抖动过滤容差 */
+    __s32 flat;          /* 死区范围 */
+    __s32 resolution;    /* 分辨率 */
+};
+```
+
+代码示例：
+
+```c
+#include <linux/input.h>
+#include <sys/ioctl.h>
+
+struct input_absinfo slot;
+
+/* 获取 ABS_MT_SLOT 的范围信息 */
+if (ioctl(fd, EVIOCGABS(ABS_MT_SLOT), &slot) == 0) {
+    int max_slots = slot.maximum - slot.minimum + 1;
+}
+```
+
+例如：
+
+```text
+slot.minimum = 0
+slot.maximum = 4
+```
+
+则：
+
+```text
+max_slots = 4 - 0 + 1 = 5
+```
+
+表示设备支持 `5` 个多点触摸槽位。
 ## 访问硬件方式相关
 
 ### struct pollfd
@@ -4668,269 +4825,6 @@ fcntl(fd, F_SETFL, flags | FASYNC);
  * 系统会调用 signal_handler(SIGINT)。
  *
  * SIGINT 通常可以通过 Ctrl+C 产生。
- */
-```
-
-# 10 c中常用函数与数据类型
-
-## 10.1 数据类型
-
-
-
-## 10.2 函数
-
-### 10.2.1 字符相关函数
-
-#### strtoul：字符串转整型函数
-
-```c
-/**
- * @brief  将字符串转换成 unsigned long 类型的无符号整数。
- *
- * @param  str: 要转换的字符串。
- *
- * @param  endptr: 用于保存转换结束位置的指针。
- *                 不需要时可以传入 NULL。
- *
- * @param  base: 转换时使用的进制。
- *               0 表示根据字符串前缀自动判断进制。
- *               10 表示十进制。
- *               16 表示十六进制。
- *
- * @retval 转换得到的 unsigned long 类型数值。
- */
-unsigned long strtoul(const char *str,
-                      char **endptr,
-                      int base);
-```
-
-代码示例：
-
-```
-unsigned long num;
-
-num = strtoul("30", NULL, 10);
-
-/*
- * 将字符串 "30" 按照十进制转换。
- *
- * 转换结果：
- * num = 30
- */
-```
-
-#### strcmp：比较字符串大小
-
-```c
-/**
- * @brief  按字符逐个比较两个字符串的大小。
- *
- * @param  s1: 指向第一个以 '\0' 结尾的字符串。
- *
- * @param  s2: 指向第二个以 '\0' 结尾的字符串。
- *
- * @retval 0: 两个字符串内容相同。
- *
- * @retval 负数: s1 小于 s2。
- *
- * @retval 正数: s1 大于 s2。
- */
-#include <string.h>
-
-int strcmp(const char *s1, const char *s2);
-```
-
-代码示例：
-
-```c
-int result;
-
-result = strcmp("apple", "banana");
-
-/*
- * 比较字符串 "apple" 和 "banana"。
- *
- * 结果：
- * result < 0；
- * 表示 "apple" 小于 "banana"。
- *
- * strcmp() 的正数或负数具体是多少没有固定要求，
- * 判断时应与 0 比较。
- */
-```
-
-#### str_delete：字符删除
-
-```c
-/**
- * @brief  从字符串的指定下标开始删除指定数量的字符。
- *
- * @param  str: 需要修改的字符串。
- *
- * @param  pos: 开始删除的位置，下标从 0 开始。
- *
- * @param  count: 需要删除的字符数量。
- *
- * @retval 无返回值。
- *
- * @note   str_delete() 不是 C 标准库函数，需要自行定义。
- */
-#include <string.h>
-
-void str_delete(char *str, size_t pos, size_t count)
-{
-    size_t len = strlen(str);
-
-    if (pos >= len)
-        return;
-
-    if (count > len - pos)
-        count = len - pos;
-
-    memmove(str + pos,
-            str + pos + count,
-            len - pos - count + 1);
-}
-```
-
-代码示例：
-
-```c
-char str[] = "abcdefg";
-
-str_delete(str, 2, 3);
-
-/*
- * 从下标 2 开始删除 3 个字符。
- *
- * 删除前：
- * "abcdefg"
- *
- * 删除的字符：
- * c、d、e
- *
- * 删除后：
- * "abfg"
- *
- * memmove() 会把后面的字符和结尾的 '\0'
- * 一起向前移动，覆盖需要删除的内容。
- */
-```
-
-### 10.2.2 动态内存管理
-
-#### calloc
-
-```c
-/**
- * @brief  在堆内存中申请一块连续空间，并将申请到的内存全部初始化为 0。
- *
- * @param  nmemb: 要申请的元素个数。
- *
- * @param  size: 每个元素占用的字节数。
- *
- * @retval 非 NULL: 内存申请成功，返回所申请内存的首地址。
- *
- * @retval NULL: 内存申请失败。
- */
-#include <stdlib.h>
-void *calloc(size_t nmemb, size_t size);
-```
-
-代码示例：
-
-```c
-int *array;
-
-array = calloc(10, sizeof(int));
-
-/*
- * 申请可以存放 10 个 int 类型数据的连续内存空间。
- *
- * 申请的总大小：
- * 10 × sizeof(int)
- *
- * calloc() 会将这块内存中的所有字节初始化为 0。
- *
- * array：
- * 申请成功时，保存内存空间的首地址；
- * 申请失败时，值为 NULL。
- */
-```
-
-#### malloc
-
-```c
-/**
- * @brief  在堆内存中申请一块指定字节数的连续内存空间。
- *
- * @param  size: 要申请的内存字节数。
- *
- * @retval 非 NULL: 内存申请成功，返回所申请内存的首地址。
- *
- * @retval NULL: 内存申请失败。
- */
-#include <stdlib.h>
-void *malloc(size_t size);
-```
-
-代码示例：
-
-```c
-int *array;
-
-array = malloc(10 * sizeof(int));
-
-/*
- * 申请可以存放 10 个 int 类型数据的连续内存空间。
- *
- * 申请的总大小：
- * 10 × sizeof(int)
- *
- * malloc() 不会初始化申请到的内存，
- * 内存中原来的数据是不确定的。
- *
- * array：
- * 申请成功时，保存内存空间的首地址；
- * 申请失败时，值为 NULL。
- */
-```
-### 10.2.3 内存操作
-#### memcpy
-
-```c
-#include <string.h>
-
-/**
- * @brief  将源内存中的指定字节复制到目标内存中。
- *         源内存和目标内存不能重叠。
- *
- * @param  dest: 目标内存的起始地址。
- *
- * @param  src: 源内存的起始地址。
- *
- * @param  n: 要复制的字节数。
- *
- * @retval 返回目标内存的起始地址 dest。
- */
-void *memcpy(void *dest, const void *src, size_t n);
-```
-
-代码示例：
-
-```c
-int src[3]  = {1, 2, 3};
-int dest[3] = {0};
-
-memcpy(dest, src, sizeof(src));
-
-/*
- * 将 src 中的所有数据复制到 dest 中。
- *
- * 复制结果：
- * dest[0] = 1
- * dest[1] = 2
- * dest[2] = 3
  */
 ```
 
@@ -5760,9 +5654,39 @@ bitmap：
 ```
 
 ---
-## 11.2.2 数据类型
+### 11.2.2 宏
 
-### `struct tsdev`
+多点触摸（Multi-Touch）绝对事件代码，用于表示触点槽位、位置、压力、接触面积等信息。
+
+```c
+#include <linux/input-event-codes.h>
+
+#define ABS_MT_SLOT         0x2f   /* 当前正在修改的触摸槽位 */
+
+#define ABS_MT_TOUCH_MAJOR  0x30   /* 触摸区域椭圆的主轴大小 */
+#define ABS_MT_TOUCH_MINOR  0x31   /* 触摸区域椭圆的次轴大小，圆形时可省略 */
+
+#define ABS_MT_WIDTH_MAJOR  0x32   /* 接近触摸面的工具区域主轴大小 */
+#define ABS_MT_WIDTH_MINOR  0x33   /* 接近触摸面的工具区域次轴大小 */
+
+#define ABS_MT_ORIENTATION  0x34   /* 触摸椭圆的方向 */
+
+#define ABS_MT_POSITION_X   0x35   /* 触摸点中心的 X 坐标 */
+#define ABS_MT_POSITION_Y   0x36   /* 触摸点中心的 Y 坐标 */
+
+#define ABS_MT_TOOL_TYPE    0x37   /* 触摸工具类型 */
+#define ABS_MT_BLOB_ID      0x38   /* 一组相关触摸数据的编号 */
+#define ABS_MT_TRACKING_ID  0x39   /* 一次触摸接触的唯一跟踪编号 */
+
+#define ABS_MT_PRESSURE     0x3a   /* 触摸压力 */
+#define ABS_MT_DISTANCE     0x3b   /* 触摸工具与表面的悬停距离 */
+
+#define ABS_MT_TOOL_X       0x3c   /* 触摸工具中心的 X 坐标 */
+#define ABS_MT_TOOL_Y       0x3d   /* 触摸工具中心的 Y 坐标 */
+```
+### 11.2.3 数据类型
+
+#### `struct tsdev`
 
 `struct tsdev` 表示一个由 tslib 管理的触摸屏设备。
 
@@ -5803,11 +5727,7 @@ if (ts != NULL) {
 
 ---
 
-### `struct ts_sample_mt`
-
-`struct ts_sample_mt` 用来保存一个多点触摸槽位的采样数据，例如坐标、压力、槽位编号、触点跟踪编号和数据是否有效。
-
-源文件中实际使用了以下成员：
+#### `struct ts_sample_mt`
 
 | 成员            | 在源文件中的作用          |
 | ------------- | ----------------- |
@@ -5818,7 +5738,8 @@ if (ts != NULL) {
 
 ```c
 /**
- * @brief 保存一个多点触摸槽位的采样数据。
+ * @brief 保存一个多点触摸槽位的采样数据，
+		  例如坐标、压力、槽位编号、触点跟踪编号和数据是否有效。
  *
  * 必需头文件：
  * #include <tslib.h>
@@ -5832,7 +5753,7 @@ struct ts_sample_mt {
     unsigned int pressure;       /* 压力值 */
 
     int slot;                    /* 触摸槽位编号 */
-    int tracking_id;             /* 触点跟踪编号 */
+    int tracking_id;             /* 触点跟踪编号 非0：有触点；0：触点结束/抬起 */
     int tool_type;               /* 触摸工具类型 */
 
     int tool_x;                  /* 触摸工具的 X 坐标 */
@@ -5849,8 +5770,8 @@ struct ts_sample_mt {
 
     struct timeval tv;           /* 事件时间 */
 
-    short pen_down;              /* BTN_TOUCH 状态 */
-    short valid;                 /* 本次采样是否包含新数据 */
+    short pen_down;              /* BTN_TOUCH 状态 通常：1按下，0松开 */
+    short valid;                 /* 本次采样是否包含新数据 非0：有新数据；0：本次没更新 */
 };
 ```
 
@@ -5873,33 +5794,9 @@ if (point.valid && point.tracking_id != -1) {
 }
 ```
 
-## 11.2.3 函数
+### 11.2.4 函数
 
-### `ts_setup()`
-
-`ts_setup()` 用来寻找、打开并配置触摸屏设备。
-
-调用后，tslib 会尝试完成以下操作：
-
-1. 查找触摸屏输入设备。
-    
-2. 打开触摸屏设备。
-    
-3. 读取 tslib 配置文件。
-    
-4. 加载并初始化配置文件中的模块。
-    
-
-当 `dev_name` 为 `NULL` 时，tslib 会先检查 `TSLIB_TSDEVICE` 环境变量；如果没有设置，再尝试查找默认触摸设备。
-
-参数说明：
-
-|参数|含义|
-|---|---|
-|`dev_name`|触摸屏设备路径；传入 `NULL` 时由 tslib 查找设备|
-|`nonblock`|是否使用非阻塞方式；`0` 表示阻塞方式|
-
-成功时返回一个 `struct tsdev` 指针。源文件通过判断返回值是否为 `NULL` 来判断调用是否失败。
+#### `ts_setup()`
 
 ```c
 /**
@@ -5937,13 +5834,7 @@ if (ts == NULL) {
 
 ---
 
-### `ts_fd()`
-
-`ts_fd()` 用来取得 tslib 当前打开的触摸屏设备文件描述符。
-
-由于 `struct tsdev` 的内部成员没有公开，程序不能直接从结构体中取得文件描述符，需要调用 `ts_fd()`。
-
-源文件先通过 `ts_setup()` 获得有效设备，再将 `ts_fd(ts)` 返回的文件描述符传给 `ioctl()`，用于查询触摸屏的多点触摸槽位范围。
+#### `ts_fd()`
 
 ```c
 /**
@@ -5979,43 +5870,7 @@ if (ts != NULL) {
 
 ---
 
-### `ts_read_mt()`
-
-`ts_read_mt()` 用来读取经过 tslib 模块处理后的多点触摸数据。
-
-`samp` 可以理解成一个二维数据空间：
-
-```text
-samp[第几组采样数据][第几个触摸槽位]
-```
-
-参数说明：
-
-|参数|含义|
-|---|---|
-|`ts`|有效的 tslib 触摸屏设备|
-|`samp`|保存多点触摸数据的二维存储空间|
-|`slots`|每组数据包含的最大触摸槽位数|
-|`nr`|希望读取的采样组数|
-
-调用者必须提前准备能够保存 `nr × slots` 个 `struct ts_sample_mt` 的存储空间。
-
-函数成功时返回实际读取到的采样组数；失败时返回负数。
-
-源文件中的调用是：
-
-```text
-ts_read_mt(ts, samp_mt, max_slots, 1)
-```
-
-因此：
-
-- `nr` 为 `1`，每次读取一组数据。
-    
-- `samp_mt[0]` 表示第 1 组数据。
-    
-- `samp_mt[0][i]` 表示第 1 组数据中的第 `i` 个触摸槽位。
-    
+#### `ts_read_mt()`
 
 ```c
 /**
@@ -6075,18 +5930,7 @@ if (samp_mt != NULL && samp_mt[0] != NULL) {
 
 ---
 
-### `ts_close()`
-
-`ts_close()` 用来关闭触摸屏设备，并释放 tslib 为该设备分配的相关资源。
-
-只有在已经通过 `ts_setup()` 等函数获得有效 `struct tsdev` 指针后，才能调用 `ts_close()`。
-
-返回值：
-
-|返回值|含义|
-|---|---|
-|`0`|关闭成功|
-|负数|关闭失败|
+#### `ts_close()`
 
 ```c
 /**
@@ -6121,8 +5965,10 @@ if (ts != NULL) {
     }
 }
 ```
-# 尾页
-
+# 相关文件
+[[系统修改与环境配置记录]]
+[[嵌入式Linux应用开发完全手册V5.3_IMX6ULL_Pro开发板.pdf]]
+[[c++库]]
 # # 
 
 # # 

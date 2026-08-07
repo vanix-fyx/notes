@@ -78,25 +78,26 @@
     "expandedKeys": [],
     "cursor": {
       "from": {
-        "line": 1,
+        "line": 3,
         "ch": 0
       },
       "to": {
-        "line": 1,
+        "line": 3,
         "ch": 0
       }
-    }
+    },
+    "scroll": 0
   },
   "_README/笔记格式提示词.md": {
     "expandedKeys": [],
-    "scroll": 0,
+    "scroll": 18.934895435969036,
     "cursor": {
       "from": {
-        "line": 27,
+        "line": 29,
         "ch": 0
       },
       "to": {
-        "line": 27,
+        "line": 29,
         "ch": 0
       }
     }
@@ -133,5 +134,65 @@
         "ch": 0
       }
     }
+  },
+  "Linux/00_Linux_main.md": {
+    "expandedKeys": [
+      "item-2-167",
+      "item-2-177",
+      "item-3-169",
+      "item-3-172",
+      "item-2-185",
+      "item-1-204",
+      "item-2-225",
+      "item-3-233"
+    ],
+    "cursor": {
+      "from": {
+        "line": 4040,
+        "ch": 0
+      },
+      "to": {
+        "line": 4040,
+        "ch": 0
+      }
+    },
+    "scroll": 4020.6176826840356
+  },
+  "_README/提示词_已更新.md": {
+    "expandedKeys": [],
+    "cursor": {
+      "from": {
+        "line": 38,
+        "ch": 3
+      },
+      "to": {
+        "line": 38,
+        "ch": 3
+      }
+    },
+    "scroll": 0.04666666507720947
+  },
+  "c++/未命名.md": {
+    "expandedKeys": [],
+    "scroll": 0
+  },
+  "c++/c++库.md": {
+    "cursor": {
+      "from": {
+        "line": 275,
+        "ch": 22
+      },
+      "to": {
+        "line": 275,
+        "ch": 22
+      }
+    },
+    "expandedKeys": [
+      "item-2-5",
+      "item-2-9",
+      "item-2-13",
+      "item-1-4"
+    ],
+    "scroll": 263.0972662634958
   }
 }
