@@ -15,15 +15,15 @@
     ],
     "cursor": {
       "from": {
-        "line": 4680,
+        "line": 5805,
         "ch": 0
       },
       "to": {
-        "line": 4680,
+        "line": 5805,
         "ch": 0
       }
     },
-    "scroll": 4653.678570701963
+    "scroll": 5782.421377908616
   },
   "README.md": {
     "expandedKeys": []
@@ -38,7 +38,8 @@
     "expandedKeys": []
   },
   "未命名.md": {
-    "expandedKeys": []
+    "expandedKeys": [],
+    "scroll": 0
   },
   "_README/未命名.md": {
     "cursor": {
@@ -96,6 +97,39 @@
       },
       "to": {
         "line": 27,
+        "ch": 0
+      }
+    }
+  },
+  "Linux/Linux_main.md": {
+    "expandedKeys": []
+  },
+  "Linux/修改过的系统配置.md": {
+    "expandedKeys": [
+      "item-1-0",
+      "item-2-1",
+      "item-3-2"
+    ],
+    "cursor": {
+      "from": {
+        "line": 464,
+        "ch": 0
+      },
+      "to": {
+        "line": 464,
+        "ch": 0
+      }
+    },
+    "scroll": 0.1393401462917908
+  },
+  "Linux/系统修改与环境配置记录.md": {
+    "cursor": {
+      "from": {
+        "line": 464,
+        "ch": 0
+      },
+      "to": {
+        "line": 464,
         "ch": 0
       }
     }
