@@ -145,6 +145,44 @@ result = strcmp("apple", "banana");
  */
 ```
 
+### strlen：计算字符串的长度
+
+```c
+/**
+ * @brief  计算字符串的长度，即字符串结束符 '\0' 之前的字符数量。
+ *
+ * @param  s: 指向要计算长度的字符串。
+ *
+ * @retval 字符串中 '\0' 之前的字符数量，不包括 '\0'。
+ */
+#include <string.h>
+
+size_t strlen(const char *s);
+```
+
+例如：
+
+```c
+char str[] = "hello";
+
+size_t len = strlen(str);
+```
+
+此时：
+
+```c
+len == 5
+```
+
+字符串实际存储为：
+
+```text
+'h' 'e' 'l' 'l' 'o' '\0'
+```
+
+strlen 只统计 '\0' 前面的字符，所以结果为 5，不包含字符串结束符 '\0'。
+
+返回值类型为 size_t。
 ### str_delete：字符删除
 
 ```c
@@ -203,6 +241,58 @@ str_delete(str, 2, 3);
  */
 ```
 
+### fgets：从指定文件流中读取字符串
+
+```c
+/**
+ * @brief  从指定文件流中读取字符串，最多读取 n - 1 个字符。
+ *         遇到换行符或文件结束符时停止读取。
+ *         如果读取到换行符，换行符也会被保存到字符串中，
+ *         最后会自动添加字符串结束符 '\0'。
+ *
+ * @param  str: 用于保存读取内容的字符数组。
+ *
+ * @param  n: 最多允许写入 str 的字符数，包括结尾的 '\0'。
+ *
+ * @param  stream: 要读取的文件流。
+		example:
+			 stdin // 标准输入流，通常对应键盘 
+			 stdout // 标准输出流，通常对应屏幕 
+			 stderr // 标准错误流，通常对应屏幕
+ *
+ * @retval str: 读取成功。
+ *         返回参数 str 本身，也就是保存读取结果的字符数组的首地址。
+ *
+ * @retval NULL: 到达文件末尾且没有读取到字符，或发生读取错误。
+ */
+#include <stdio.h>
+
+char *fgets(char *str, int n, FILE *stream);
+```
+
+常见用法：
+
+```c
+char buf[100];
+
+fgets(buf, sizeof(buf), stdin);
+```
+
+从标准输入读取字符串时，fgets 可以限制最大读取长度，因此可以避免输入内容超过字符数组的容量。
+
+如果用户输入：
+
+```text
+hello
+```
+
+buf 中保存的实际内容通常为：
+
+```text
+"hello\n\0"
+```
+
+因为 fgets 会保留读取到的换行符。
 ## 3.2 动态内存管理
 
 ### calloc

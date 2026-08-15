@@ -6050,6 +6050,9 @@ struct sockaddr_in server_addr = {0};
 server_addr.sin_family = AF_INET;
 server_addr.sin_port = htons(8888);
 inet_aton("192.168.1.100", &server_addr.sin_addr);
+
+//服务器一般使用这个
+server_addr.sin_addr.s_addr = INADDR_ANY;
 ```
 
 #### sockaddr
