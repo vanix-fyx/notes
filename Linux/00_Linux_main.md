@@ -4829,9 +4829,9 @@ fcntl(fd, F_SETFL, flags | FASYNC);
 ```
 
 
-# 11 第三方库与组件
+# 10 第三方库与组件
 
-## 11.1 FreeType 字体库
+## 10.1 FreeType 字体库
 
 ### 数据类型表
 
@@ -5610,8 +5610,8 @@ slot：
 bitmap：
 字形渲染后得到的像素位图。
 ```
-## 11.2 tslib 触摸屏
-### 11.2.1 命令
+## 10.2 tslib 触摸屏
+### 10.2.1 命令
 
 #### `ts_print`
 
@@ -5654,7 +5654,7 @@ bitmap：
 ```
 
 ---
-### 11.2.2 宏
+### 10.2.2 宏
 
 多点触摸（Multi-Touch）绝对事件代码，用于表示触点槽位、位置、压力、接触面积等信息。
 
@@ -5684,9 +5684,9 @@ bitmap：
 #define ABS_MT_TOOL_X       0x3c   /* 触摸工具中心的 X 坐标 */
 #define ABS_MT_TOOL_Y       0x3d   /* 触摸工具中心的 Y 坐标 */
 ```
-### 11.2.3 数据类型
+### 10.2.3 数据类型
 
-#### `struct tsdev`
+#### struct tsdev
 
 `struct tsdev` 表示一个由 tslib 管理的触摸屏设备。
 
@@ -5727,7 +5727,7 @@ if (ts != NULL) {
 
 ---
 
-#### `struct ts_sample_mt`
+#### struct ts_sample_mt
 
 | 成员            | 在源文件中的作用          |
 | ------------- | ----------------- |
@@ -5794,9 +5794,9 @@ if (point.valid && point.tracking_id != -1) {
 }
 ```
 
-### 11.2.4 函数
+### 10.2.4 函数
 
-#### `ts_setup()`
+#### ts_setup()
 
 ```c
 /**
@@ -5834,7 +5834,7 @@ if (ts == NULL) {
 
 ---
 
-#### `ts_fd()`
+#### ts_fd()
 
 ```c
 /**
@@ -5870,7 +5870,7 @@ if (ts != NULL) {
 
 ---
 
-#### `ts_read_mt()`
+#### ts_read_mt()
 
 ```c
 /**
@@ -5930,7 +5930,7 @@ if (samp_mt != NULL && samp_mt[0] != NULL) {
 
 ---
 
-#### `ts_close()`
+#### ts_close()
 
 ```c
 /**
@@ -5964,6 +5964,609 @@ if (ts != NULL) {
         /* 关闭触摸屏设备失败 */
     }
 }
+```
+## 10.3 网络编程
+### 10.3.1 宏
+
+#### INADDR_ANY
+
+```c
+#include <netinet/in.h>
+
+#define INADDR_ANY ((in_addr_t) 0x00000000)
+```
+
+作用：
+
+```text
+表示任意本地 IPv4 地址。
+
+服务器绑定地址时使用 INADDR_ANY，
+表示允许客户端通过本机任意网络接口的 IPv4 地址连接服务器。
+```
+
+代码示例：
+
+```c
+#include <netinet/in.h>
+
+struct sockaddr_in server_addr = {0};
+
+server_addr.sin_family = AF_INET;
+server_addr.sin_port = htons(8888);
+
+/* 绑定本机所有 IPv4 网络接口 */
+server_addr.sin_addr.s_addr = INADDR_ANY;
+```
+### 10.3.2 数据类型
+#### sockaddr_in
+
+作用：
+
+用于保存 **IPv4 网络地址信息**，主要包括地址族、端口号和 IPv4 地址。
+
+在 IPv4 socket 编程中，`bind()`、`connect()`、`accept()` 等函数经常配合该结构体使用。
+
+```c
+#include <netinet/in.h>
+
+struct sockaddr_in
+{
+    sa_family_t    sin_family;   // 地址族
+    in_port_t      sin_port;     // 端口号
+    struct in_addr sin_addr;     // IPv4 地址
+    unsigned char  sin_zero[8];  // 填充字段
+};
+```
+
+成员说明：
+
+```text
+sin_family：
+地址族。
+IPv4 网络编程中设置为 AF_INET。
+
+sin_port：
+端口号。
+通常使用 htons() 将端口号转换为网络字节序后保存。
+
+sin_addr：
+IPv4 地址。
+用于保存设备的 IPv4 地址。
+
+sin_zero：
+填充字段。
+一般清零，不用于保存实际的网络地址信息。
+```
+
+代码示例：
+
+```c
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+struct sockaddr_in server_addr = {0};
+
+server_addr.sin_family = AF_INET;
+server_addr.sin_port = htons(8888);
+inet_aton("192.168.1.100", &server_addr.sin_addr);
+```
+
+#### sockaddr
+
+作用：
+
+用于表示一种**通用的 socket 地址结构**。
+
+很多 socket 函数为了能够同时接收 IPv4、IPv6 等不同类型的地址，参数统一使用 `struct sockaddr *`。
+
+实际进行 IPv4 编程时，通常先使用 `struct sockaddr_in` 保存地址，再将它的指针强制转换为 `struct sockaddr *` 传给 socket 函数。
+
+```c
+#include <sys/socket.h>
+
+struct sockaddr
+{
+    sa_family_t sa_family;   // 地址族
+    char        sa_data[14]; // 地址数据
+};
+```
+
+成员说明：
+
+```text
+sa_family：
+地址族。
+用于表示地址属于哪一种协议族，例如 IPv4 使用 AF_INET。
+
+sa_data：
+保存与地址相关的数据。
+
+实际进行 IPv4 编程时，
+通常不会直接操作 sa_data，
+而是使用 struct sockaddr_in 保存具体地址信息。
+
+struct sockaddr_in 用于实际保存 IPv4 地址信息，而 struct sockaddr 是 socket 接口使用的通用地址结构。为了让 bind()、connect() 等函数能够统一接收 IPv4、IPv6 等不同类型的地址，它们的参数统一定义为 struct sockaddr *。因此使用 IPv4 时，需要将 struct sockaddr_in * 强制转换为 struct sockaddr * 后传入函数；函数再根据地址族（如 AF_INET）判断实际的地址类型。
+```
+
+代码示例：
+
+```c
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+struct sockaddr_in ipv4_addr;
+
+/* 将 IPv4 地址结构体指针转换为通用地址结构体指针 */
+struct sockaddr *addr;
+
+addr = (struct sockaddr *)&ipv4_addr;
+```
+
+#### in_addr
+
+作用：
+
+用于保存一个 **IPv4 地址**。
+
+它通常作为 `struct sockaddr_in` 的 `sin_addr` 成员使用，用来存放网络通信中的 IPv4 地址。
+
+```c
+#include <netinet/in.h>
+
+struct in_addr
+{
+    in_addr_t s_addr;    // IPv4 地址
+};
+```
+
+成员说明：
+
+```text
+s_addr：
+用于保存 IPv4 地址。
+
+IPv4 地址以网络字节序的形式保存。
+```
+
+代码示例：
+
+```c
+#include <arpa/inet.h>
+
+struct in_addr addr;
+
+/* 将字符串形式的 IPv4 地址转换后保存到 addr 中 */
+inet_aton("192.168.1.100", &addr);
+```
+### 10.3.3 函数
+#### socket
+
+```c
+/**
+ * @brief  创建一个 socket(套接字，可以理解为端口)，并返回对应的文件描述符。
+ *
+ * @param  domain: 通信地址族。
+ *                 IPv4 常用 AF_INET。
+ *
+ * @param  type: socket 类型（可通过man socket查询）。
+ *               TCP 常用 SOCK_STREAM。
+ *               UDP 常用 SOCK_DGRAM
+ *
+ * @param  protocol: 使用的协议。
+ *                   通常设置为 0，由系统根据 domain 和 type 自动选择。
+ *
+ * @retval >=0: 创建成功，返回 socket 文件描述符。
+ *
+ * @retval -1: 创建失败。
+ */
+#include <sys/socket.h>
+
+int socket(int domain, int type, int protocol);
+```
+
+代码示例：
+
+```c
+int sockfd;
+
+/* 创建一个 IPv4 TCP socket */
+sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+if (sockfd == -1)
+{
+    /* socket 创建失败 */
+}
+```
+
+#### bind
+
+```c
+/**
+ * @brief  将 socket 与本地 IP 地址和端口号绑定。
+ *
+ * @param  sockfd: socket() 创建的套接字文件描述符。
+ *
+ * @param  addr: 指向本地地址结构体的指针。
+ *
+ * @param  addrlen: 地址结构体的大小。
+ *
+ * @retval 0: 绑定成功。
+ *
+ * @retval -1: 绑定失败。
+ */
+#include <sys/socket.h>
+
+int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+```
+
+代码示例：
+
+```c
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+int sockfd;
+struct sockaddr_in server_addr = {0};
+
+sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+server_addr.sin_family = AF_INET;
+server_addr.sin_port = htons(8888);
+server_addr.sin_addr.s_addr = INADDR_ANY;
+
+/* 将 socket 绑定到本机的 8888 端口 */
+if (bind(sockfd,
+         (const struct sockaddr *)&server_addr,
+         sizeof(server_addr)) == -1)
+{
+    /* 绑定失败 */
+}
+```
+
+#### listen
+
+```c
+/**
+ * @brief  将 socket 设置为监听状态，等待客户端连接。
+ *
+ * @param  sockfd: 已经通过 bind() 绑定地址的 socket 文件描述符。
+ *
+ * @param  backlog: 等待连接队列的长度限制。
+ *
+ * @retval 0: 设置监听成功。
+ *
+ * @retval -1: 设置监听失败。
+ */
+#include <sys/socket.h>
+
+int listen(int sockfd, int backlog);
+```
+
+代码示例：
+
+```c
+#include <sys/socket.h>
+
+#define BACKLOG 10
+
+/* 开始监听客户端连接 */
+if (listen(sockfd, BACKLOG) == -1)
+{
+    /* 设置监听失败 */
+}
+```
+
+#### accept
+
+```c
+/**
+ * @brief  从监听 socket 中接收一个客户端连接，
+ *         并返回一个新的 socket 文件描述符用于与该客户端通信。
+ *
+ * @param  sockfd: 处于监听状态的 socket 文件描述符。
+ *
+ * @param  addr: 用于保存客户端地址信息。
+ *               不需要客户端地址时可以传入 NULL。
+ *
+ * @param  addrlen: 输入时表示 addr 缓冲区大小，
+ *                  返回时表示实际客户端地址长度。
+ *
+ * @retval >=0: 接收连接成功，返回新的客户端 socket 文件描述符。
+ *
+ * @retval -1: 接收连接失败。
+ */
+#include <sys/socket.h>
+
+int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+```
+
+代码示例：
+
+```c
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+int client_fd;
+struct sockaddr_in client_addr;
+socklen_t addr_len;
+
+addr_len = sizeof(client_addr);
+
+/* 等待并接收客户端连接 */
+client_fd = accept(sockfd,
+                   (struct sockaddr *)&client_addr,
+                   &addr_len);
+
+if (client_fd == -1)
+{
+    /* 接收连接失败 */
+}
+```
+
+#### connect
+
+```c
+/**
+ * @brief  主动连接指定的服务器。
+ *
+ * @param  sockfd: socket() 创建的套接字文件描述符。
+ *
+ * @param  addr: 指向服务器地址结构体的指针，
+ *               通常将 struct sockaddr_in * 转换为 struct sockaddr *。
+ *
+ * @param  addrlen: 地址结构体的大小。
+ *
+ * @retval 0: 连接成功。
+ *
+ * @retval -1: 连接失败。
+ */
+#include <sys/socket.h>
+
+int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+```
+
+代码示例：
+
+```c
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+int sockfd;
+struct sockaddr_in server_addr = {0};
+
+sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+server_addr.sin_family = AF_INET;
+server_addr.sin_port = htons(8888);
+inet_aton("192.168.1.100", &server_addr.sin_addr);
+
+/* 连接服务器 */
+if (connect(sockfd,
+            (const struct sockaddr *)&server_addr,
+            sizeof(server_addr)) == -1)
+{
+    /* 连接失败 */
+}
+```
+
+
+#### send
+
+```c
+/**
+ * @brief  通过已连接的 socket 发送数据。
+ *
+ * @param  sockfd: socket 文件描述符。
+ *
+ * @param  buf: 指向待发送数据的缓冲区。
+ *
+ * @param  len: 要发送的数据长度，单位为字节。
+ *
+ * @param  flags: 发送控制标志。
+ *                不需要特殊功能时通常设置为 0。
+ *
+ * @retval >0: 实际发送的字节数。
+ *
+ * @retval 0: 没有发送数据。
+ *
+ * @retval -1: 发送失败。
+ */
+#include <sys/socket.h>
+
+ssize_t send(int sockfd, const void *buf, size_t len, int flags);
+```
+
+代码示例：
+
+```c
+#include <sys/socket.h>
+#include <string.h>
+
+char buf[] = "hello";
+
+ssize_t ret;
+
+/* 发送字符串中的数据 */
+ret = send(sockfd, buf, strlen(buf), 0);
+
+if (ret == -1)
+{
+    /* 发送失败 */
+}
+```
+
+#### recv
+
+```c
+/**
+ * @brief  从已经连接的 socket 中接收数据。
+ *
+ * @param  sockfd: socket 文件描述符。
+ *
+ * @param  buf: 用于保存接收数据的缓冲区。
+ *
+ * @param  len: 缓冲区最多可以接收的字节数。
+ *
+ * @param  flags: 接收控制标志。
+ *                不需要特殊功能时通常设置为 0。
+ *
+ * @retval >0: 实际接收到的字节数。
+ *
+ * @retval 0: 对端已经正常关闭连接。
+ *
+ * @retval -1: 接收失败。
+ */
+#include <sys/socket.h>
+
+ssize_t recv(int sockfd, void *buf, size_t len, int flags);
+```
+
+代码示例：
+
+```c
+#include <sys/socket.h>
+
+char buf[1000];
+ssize_t recv_len;
+
+/* 最多接收 999 个字节，预留一个字节存放 '\0' */
+recv_len = recv(client_fd, buf, sizeof(buf) - 1, 0);
+
+if (recv_len > 0)
+{
+    /* 将接收到的数据作为字符串使用时补上结束符 */
+    buf[recv_len] = '\0';
+}
+else if (recv_len == 0)
+{
+    /* 对端关闭连接 */
+}
+else
+{
+    /* 接收失败 */
+}
+```
+
+#### htons
+
+```c
+/**
+ * @brief  将 16 位整数从主机字节序转换为网络字节序，
+ *         网络编程中通常用于转换端口号。
+ *
+ * @param  hostshort: 主机字节序的 16 位整数。
+ *
+ * @retval 返回转换后的网络字节序数值。
+ */
+#include <arpa/inet.h>
+
+uint16_t htons(uint16_t hostshort);
+```
+
+代码示例：
+
+```c
+#include <arpa/inet.h>
+
+struct sockaddr_in server_addr;
+
+/* 将端口号 8888 转换为网络字节序 */
+server_addr.sin_port = htons(8888);
+```
+
+#### inet_aton
+
+```c
+/**
+ * @brief  将点分十进制形式的 IPv4 地址字符串
+ *         转换为网络地址，并保存到 struct in_addr 中。
+ *
+ * @param  cp: IPv4 地址字符串。
+ *
+ * @param  inp: 用于保存转换结果的 struct in_addr 地址。
+ *
+ * @retval 1: 转换成功。
+ *
+ * @retval 0: IPv4 地址格式无效。
+ */
+#include <arpa/inet.h>
+
+int inet_aton(const char *cp, struct in_addr *inp);
+```
+
+代码示例：
+
+```c
+#include <arpa/inet.h>
+
+struct in_addr addr;
+
+if (inet_aton("192.168.1.100", &addr) == 0)
+{
+    /* IPv4 地址格式无效 */
+}
+```
+
+#### inet_ntoa
+
+```c
+/**
+ * @brief  将 struct in_addr 中保存的 IPv4 地址
+ *         转换为点分十进制字符串。
+ *
+ * @param  in: 要转换的 IPv4 地址。
+ *
+ * @retval 成功: 返回 IPv4 地址字符串的指针。
+ */
+#include <arpa/inet.h>
+
+char *inet_ntoa(struct in_addr in);
+```
+
+代码示例：
+
+```c
+#include <arpa/inet.h>
+#include <stdio.h>
+
+struct sockaddr_in client_addr;
+
+/*
+ * 假设 client_addr 已经由 accept() 得到客户端地址，
+ * 将客户端 IPv4 地址转换为字符串。
+ */
+printf("client ip: %s\n",
+       inet_ntoa(client_addr.sin_addr));
+```
+
+### 10.3.4 TCP网络编程流程
+
+```text
+服务器端                                   客户端
+
+socket()                                  socket()
+创建 TCP socket                           创建 TCP socket
+   ↓                                         ↓
+bind()                                   connect()
+绑定本机 IP 和端口                        主动连接服务器的 IP 和端口
+   ↓                                         │
+listen()                                     │
+监听客户端连接                               │
+   ↓                                         │
+accept() ←──────── 建立 TCP 连接 ────────────┘
+接受客户端连接
+   ↓
+recv()  ←────────────── send()
+接收客户端数据              发送数据
+
+send()  ───────────────→ recv()
+发送数据                    接收服务器数据
+   ↓                                         ↓
+close()                                  close()
+关闭 socket                              关闭 socket
 ```
 # 相关文件
 [[系统修改与环境配置记录]]

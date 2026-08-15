@@ -1,198 +1,64 @@
 {
-  "Linux/Linux学习笔记.md": {
+  "Linux/00_Linux_main.md": {
     "expandedKeys": [
+      "item-2-1",
+      "item-1-204",
+      "item-3-248",
+      "item-2-241",
+      "item-3-242",
+      "item-3-244",
+      "item-2-225",
+      "item-3-218",
+      "item-1-193",
+      "item-2-167",
+      "item-3-169",
       "item-1-0",
-      "item-1-214",
-      "item-2-235",
-      "item-3-236",
-      "item-2-242",
-      "item-2-245",
-      "item-1-202",
-      "item-2-204",
-      "item-3-209",
-      "item-3-205",
-      "item-3-212"
+      "item-2-31"
     ],
     "cursor": {
       "from": {
-        "line": 5805,
-        "ch": 0
+        "line": 737,
+        "ch": 17
       },
       "to": {
-        "line": 5805,
-        "ch": 0
+        "line": 737,
+        "ch": 17
       }
     },
-    "scroll": 5782.421377908616
-  },
-  "README.md": {
-    "expandedKeys": []
-  },
-  "笔记格式提示词.md": {
-    "expandedKeys": []
-  },
-  "README/README.md": {
-    "expandedKeys": []
-  },
-  "README/笔记格式提示词.md": {
-    "expandedKeys": []
-  },
-  "未命名.md": {
-    "expandedKeys": [],
-    "scroll": 0
-  },
-  "_README/未命名.md": {
-    "cursor": {
-      "from": {
-        "line": 3,
-        "ch": 0
-      },
-      "to": {
-        "line": 3,
-        "ch": 0
-      }
-    },
-    "expandedKeys": [
-      "item-1-0"
-    ]
-  },
-  "_README/插件说明.md": {
-    "cursor": {
-      "from": {
-        "line": 56,
-        "ch": 4
-      },
-      "to": {
-        "line": 56,
-        "ch": 4
-      }
-    },
-    "expandedKeys": [
-      "item-3-2",
-      "item-3-22",
-      "item-3-37"
-    ],
-    "scroll": 39.831162532170616
-  },
-  "_README/README.md": {
-    "expandedKeys": [],
-    "cursor": {
-      "from": {
-        "line": 3,
-        "ch": 0
-      },
-      "to": {
-        "line": 3,
-        "ch": 0
-      }
-    },
-    "scroll": 0
+    "scroll": 691.844494047619
   },
   "_README/笔记格式提示词.md": {
     "expandedKeys": [],
-    "scroll": 18.934895435969036,
+    "scroll": 11.384615384615385,
     "cursor": {
       "from": {
-        "line": 29,
-        "ch": 0
+        "line": 30,
+        "ch": 29
       },
       "to": {
-        "line": 29,
-        "ch": 0
+        "line": 30,
+        "ch": 29
       }
     }
-  },
-  "Linux/Linux_main.md": {
-    "expandedKeys": []
-  },
-  "Linux/修改过的系统配置.md": {
-    "expandedKeys": [
-      "item-1-0",
-      "item-2-1",
-      "item-3-2"
-    ],
-    "cursor": {
-      "from": {
-        "line": 464,
-        "ch": 0
-      },
-      "to": {
-        "line": 464,
-        "ch": 0
-      }
-    },
-    "scroll": 0.1393401462917908
-  },
-  "Linux/系统修改与环境配置记录.md": {
-    "cursor": {
-      "from": {
-        "line": 464,
-        "ch": 0
-      },
-      "to": {
-        "line": 464,
-        "ch": 0
-      }
-    }
-  },
-  "Linux/00_Linux_main.md": {
-    "expandedKeys": [
-      "item-2-167",
-      "item-2-177",
-      "item-3-169",
-      "item-3-172",
-      "item-2-185",
-      "item-1-204",
-      "item-2-225",
-      "item-3-233"
-    ],
-    "cursor": {
-      "from": {
-        "line": 4040,
-        "ch": 0
-      },
-      "to": {
-        "line": 4040,
-        "ch": 0
-      }
-    },
-    "scroll": 4020.6176826840356
-  },
-  "_README/提示词_已更新.md": {
-    "expandedKeys": [],
-    "cursor": {
-      "from": {
-        "line": 38,
-        "ch": 3
-      },
-      "to": {
-        "line": 38,
-        "ch": 3
-      }
-    },
-    "scroll": 0.04666666507720947
-  },
-  "c++/未命名.md": {
-    "expandedKeys": [],
-    "scroll": 0
   },
   "c++/c++库.md": {
+    "expandedKeys": [
+      "item-1-4",
+      "item-2-14",
+      "item-2-10",
+      "item-2-5",
+      "item-2-16"
+    ],
     "cursor": {
       "from": {
-        "line": 275,
-        "ch": 22
+        "line": 355,
+        "ch": 14
       },
       "to": {
-        "line": 275,
-        "ch": 22
+        "line": 355,
+        "ch": 14
       }
     },
-    "expandedKeys": [
-      "item-2-5",
-      "item-2-9",
-      "item-2-13",
-      "item-1-4"
-    ],
-    "scroll": 263.0972662634958
+    "scroll": 338.31175595238096
   }
 }
