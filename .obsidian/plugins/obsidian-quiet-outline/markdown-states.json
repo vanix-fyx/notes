@@ -2,43 +2,43 @@
   "Linux/00_Linux_main.md": {
     "expandedKeys": [
       "item-2-1",
-      "item-1-204",
-      "item-3-248",
-      "item-2-241",
-      "item-3-242",
-      "item-3-244",
-      "item-2-225",
-      "item-3-218",
+      "item-1-205",
+      "item-3-250",
+      "item-3-243",
+      "item-3-245",
+      "item-3-219",
       "item-1-193",
       "item-2-167",
       "item-3-169",
-      "item-1-0",
       "item-2-31",
-      "item-1-129"
+      "item-2-185",
+      "item-3-180",
+      "item-2-177",
+      "item-2-242"
     ],
     "cursor": {
       "from": {
-        "line": 6264,
+        "line": 6184,
         "ch": 0
       },
       "to": {
-        "line": 6264,
+        "line": 6184,
         "ch": 0
       }
     },
-    "scroll": 6242.223958333333
+    "scroll": 6163.580729166667
   },
   "_README/笔记格式提示词.md": {
     "expandedKeys": [],
-    "scroll": 11.384615384615385,
+    "scroll": 0,
     "cursor": {
       "from": {
-        "line": 30,
-        "ch": 29
+        "line": 8,
+        "ch": 20
       },
       "to": {
-        "line": 30,
-        "ch": 29
+        "line": 8,
+        "ch": 20
       }
     }
   },
@@ -49,18 +49,91 @@
       "item-2-12",
       "item-2-5",
       "item-2-18",
-      "item-1-0"
+      "item-1-0",
+      "item-2-20",
+      "item-1-24"
     ],
     "cursor": {
       "from": {
-        "line": 456,
-        "ch": 19
+        "line": 1,
+        "ch": 10
       },
       "to": {
-        "line": 456,
-        "ch": 19
+        "line": 1,
+        "ch": 10
       }
     },
-    "scroll": 448.88671875
+    "scroll": 0
+  },
+  "_README/README.md": {
+    "expandedKeys": [],
+    "scroll": 0,
+    "cursor": {
+      "from": {
+        "line": 1,
+        "ch": 11
+      },
+      "to": {
+        "line": 1,
+        "ch": 11
+      }
+    }
+  },
+  "_README/插件说明.md": {
+    "expandedKeys": [
+      "item-3-2",
+      "item-2-0"
+    ],
+    "scroll": 0
+  },
+  "Linux/系统修改与环境配置记录.md": {
+    "expandedKeys": []
+  },
+  "c++/c_c++库.md": {
+    "cursor": {
+      "from": {
+        "line": 0,
+        "ch": 5
+      },
+      "to": {
+        "line": 0,
+        "ch": 5
+      }
+    },
+    "expandedKeys": [
+      "item-1-4",
+      "item-2-16",
+      "item-2-12",
+      "item-2-5",
+      "item-2-18",
+      "item-1-0",
+      "item-2-20",
+      "item-1-24"
+    ],
+    "scroll": 0
+  },
+  "c++/c_c++.md": {
+    "cursor": {
+      "from": {
+        "line": 758,
+        "ch": 1
+      },
+      "to": {
+        "line": 758,
+        "ch": 1
+      }
+    },
+    "expandedKeys": [
+      "item-1-0",
+      "item-2-12",
+      "item-2-8",
+      "item-2-1",
+      "item-2-14",
+      "item-2-16",
+      "item-2-27",
+      "item-1-33",
+      "item-3-24"
+    ],
+    "scroll": 747.87158808933
   }
 }

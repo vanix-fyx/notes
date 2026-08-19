@@ -4354,6 +4354,45 @@ FD_SET(fd, &readfds);
 
 # 9 功能函数
 
+## sleep：线程暂停
+
+```c
+/**
+ * @brief  使当前线程暂停执行指定的秒数。
+ *
+ * @param  seconds: 需要暂停的秒数。
+ *
+ * @retval 0: 已经暂停了指定的时间。
+ *
+ * @retval >0: sleep 被信号提前中断，返回剩余未休眠的秒数。
+ */
+#include <unistd.h>
+
+unsigned int sleep(unsigned int seconds);
+```
+
+sleep 是 POSIX 提供的函数，不属于 C/C++ 标准库，在 Linux 中常用。
+
+基本用法：
+
+```c
+sleep(3);
+```
+
+表示当前线程暂停约 3 秒，然后继续向下执行。
+
+例如：
+
+```c
+printf("start\n");
+
+sleep(3);
+
+printf("end\n");
+```
+
+sleep 只会使调用它的当前线程暂停，不会让整个系统停止运行。
+
 ## ioctl : 设备控制函数
 
 ```c
@@ -6142,6 +6181,52 @@ struct in_addr addr;
 /* 将字符串形式的 IPv4 地址转换后保存到 addr 中 */
 inet_aton("192.168.1.100", &addr);
 ```
+
+#### socklen_t
+
+```c
+#include <sys/socket.h>
+```
+
+socklen_t 是用于表示 **socket 地址结构体长度** 的数据类型。
+
+它常用于保存 sockaddr、sockaddr_in 等地址结构体的大小，并作为 accept()、recvfrom()、getsockname()、getpeername() 等函数的地址长度参数类型。
+
+具体底层整数类型由系统实现决定，因此网络编程中应直接使用 socklen_t，而不要用 int 代替。
+
+常见用法：
+
+```c
+struct sockaddr_in client_addr;
+socklen_t addrlen;
+
+addrlen = sizeof(client_addr);
+
+accept(sockfd,
+       (struct sockaddr *)&client_addr,
+       &addrlen);
+```
+
+在 accept()、recvfrom() 等函数中，addrlen 通常具有输入和输出两种作用：
+
+```text
+调用前：保存地址结构体缓冲区的大小
+调用后：保存实际返回的地址结构体长度
+```
+
+例如：
+
+```c
+socklen_t addrlen = sizeof(client_addr);
+
+recvfrom(sockfd,
+         buf,
+         sizeof(buf),
+         0,
+         (struct sockaddr *)&client_addr,
+         &addrlen);
+```
+
 ### 10.3.3 函数
 #### socket
 
@@ -6355,52 +6440,6 @@ if (connect(sockfd,
 }
 ```
 
-
-#### send
-
-```c
-/**
- * @brief  通过已连接的 socket 发送数据。
- *
- * @param  sockfd: socket 文件描述符。
- *
- * @param  buf: 指向待发送数据的缓冲区。
- *
- * @param  len: 要发送的数据长度，单位为字节。
- *
- * @param  flags: 发送控制标志。
- *                不需要特殊功能时通常设置为 0。
- *
- * @retval >0: 实际发送的字节数。
- *
- * @retval 0: 没有发送数据。
- *
- * @retval -1: 发送失败。
- */
-#include <sys/socket.h>
-
-ssize_t send(int sockfd, const void *buf, size_t len, int flags);
-```
-
-代码示例：
-
-```c
-#include <sys/socket.h>
-#include <string.h>
-
-char buf[] = "hello";
-
-ssize_t ret;
-
-/* 发送字符串中的数据 */
-ret = send(sockfd, buf, strlen(buf), 0);
-
-if (ret == -1)
-{
-    /* 发送失败 */
-}
-```
-
 #### recv
 
 ```c
@@ -6452,6 +6491,158 @@ else
     /* 接收失败 */
 }
 ```
+
+
+#### send
+
+```c
+/**
+ * @brief  通过已连接的 socket 发送数据。
+ *
+ * @param  sockfd: socket 文件描述符。
+ *
+ * @param  buf: 指向待发送数据的缓冲区。
+ *
+ * @param  len: 要发送的数据长度，单位为字节。
+ *
+ * @param  flags: 发送控制标志。
+ *                不需要特殊功能时通常设置为 0。
+ *
+ * @retval >0: 实际发送的字节数。
+ *
+ * @retval 0: 没有发送数据。
+ *
+ * @retval -1: 发送失败。
+ */
+#include <sys/socket.h>
+
+ssize_t send(int sockfd, const void *buf, size_t len, int flags);
+```
+
+代码示例：
+
+```c
+#include <sys/socket.h>
+#include <string.h>
+
+char buf[] = "hello";
+
+ssize_t ret;
+
+/* 发送字符串中的数据 */
+ret = send(sockfd, buf, strlen(buf), 0);
+
+if (ret == -1)
+{
+    /* 发送失败 */
+}
+```
+
+#### recvfrom
+
+```c
+/**
+ * @brief  从 socket 中接收数据，并获取发送方的地址信息，常用于 UDP 通信。
+ *
+ * @param  sockfd: socket 文件描述符。
+ *
+ * @param  buf: 用于保存接收数据的缓冲区。
+ *
+ * @param  len: 缓冲区可接收的最大数据长度。
+ *
+ * @param  flags: 接收标志，通常设置为 0。
+ *
+ * @param  src_addr: 用于保存发送方地址信息。
+ *
+ * @param  addrlen: 输入时表示 src_addr 缓冲区大小，
+ *                  返回时保存实际的发送方地址结构大小。
+ *
+ * @retval >=0: 实际接收到的数据字节数。
+ *
+ * @retval -1: 接收失败。
+ */
+#include <sys/socket.h>
+
+ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags,
+                 struct sockaddr *src_addr, socklen_t *addrlen);
+```
+
+代码示例：
+
+```c
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+char buf[1000];
+struct sockaddr_in client_addr;
+socklen_t addrlen;
+ssize_t ret;
+
+addrlen = sizeof(client_addr);
+
+ret = recvfrom(sockfd,
+               buf,
+               sizeof(buf) - 1,
+               0,
+               (struct sockaddr *)&client_addr,
+               &addrlen);
+
+if (ret >= 0)
+{
+    buf[ret] = '\0';
+}
+```
+
+recvfrom 除了接收数据以外，还可以获得**是谁发送了这份数据**，因此 UDP 服务器通常使用它接收客户端数据。
+
+#### sendto
+
+```c
+/**
+ * @brief  通过 socket 向指定地址发送数据，常用于 UDP 通信。
+ *
+ * @param  sockfd: socket 文件描述符。
+ *
+ * @param  buf: 指向待发送数据的缓冲区。
+ *
+ * @param  len: 要发送的数据长度，单位为字节。
+ *
+ * @param  flags: 发送标志，通常设置为 0。
+ *
+ * @param  dest_addr: 指向目标地址结构体。
+ *
+ * @param  addrlen: 目标地址结构体的大小。
+ *
+ * @retval >=0: 实际发送的数据字节数。
+ *
+ * @retval -1: 发送失败。
+ */
+#include <sys/socket.h>
+
+ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
+               const struct sockaddr *dest_addr, socklen_t addrlen);
+```
+
+代码示例：
+
+```c
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <string.h>
+
+char buf[] = "hello";
+struct sockaddr_in server_addr;
+ssize_t ret;
+
+ret = sendto(sockfd,
+             buf,
+             strlen(buf),
+             0,
+             (const struct sockaddr *)&server_addr,
+             sizeof(server_addr));
+```
+
+sendto 在发送数据时直接指定**目标 IP 地址和端口号**，因此 UDP 不需要像 TCP 一样先通过 connect 建立连接后再发送数据。
 
 #### htons
 
@@ -6571,10 +6762,31 @@ send()  ───────────────→ recv()
 close()                                  close()
 关闭 socket                              关闭 socket
 ```
+
+### 10.3.5 UDP网络编程流程
+```
+服务器端                                   客户端
+
+socket()                                  socket()
+创建 UDP socket                           创建 UDP socket
+   ↓                                         ↓
+bind()                                      │
+绑定本机 IP 和端口                           │
+   ↓                                         │
+recvfrom() ←──────────── sendto() ───────────┘
+接收客户端数据                 向服务器发送数据
+   ↓
+sendto() ─────────────→ recvfrom()
+向客户端发送数据               接收服务器数据
+   ↓                                         ↓
+close()                                  close()
+关闭 socket                              关闭 socket
+```
+
 # 相关文件
 [[系统修改与环境配置记录]]
 [[嵌入式Linux应用开发完全手册V5.3_IMX6ULL_Pro开发板.pdf]]
-[[c++库]]
+[[c_c++]]
 # # 
 
 # # 
