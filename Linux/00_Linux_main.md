@@ -4393,6 +4393,42 @@ printf("end\n");
 
 sleep 只会使调用它的当前线程暂停，不会让整个系统停止运行。
 
+## bzero：内存置0
+
+```c
+/**
+ * @brief  将指定内存区域的前 n 个字节全部设置为 0。
+ *
+ * @param  s: 指向需要清零的内存区域。
+ *
+ * @param  n: 需要清零的字节数。
+ *
+ * @retval 无返回值。
+ */
+#include <strings.h>
+
+void bzero(void *s, size_t n);
+```
+
+基本用法：
+
+```c
+char buf[100];
+
+bzero(buf, sizeof(buf));
+```
+
+执行后，buf 的 100 个字节都会被设置为 0。
+
+bzero 不是 ISO C 标准库函数，它来源于 BSD，在 Linux 等系统中可以使用。
+
+在可移植的 C 程序中，通常可以使用 memset 代替：
+
+```c
+#include <string.h>
+
+memset(buf, 0, sizeof(buf));
+```
 ## ioctl : 设备控制函数
 
 ```c
@@ -6783,6 +6819,496 @@ close()                                  close()
 关闭 socket                              关闭 socket
 ```
 
+## 10.4 串口
+### 10.4.1 宏
+#### struct termios相关宏
+
+需要包含的头文件：
+
+```c
+#include <termios.h>
+```
+
+struct termios 中的 c_iflag、c_oflag、c_cflag、c_lflag 和 c_cc 成员，需要配合一组宏来设置串口的工作方式。
+
+---
+
+##### c_cflag 常用宏
+
+c_cflag 用于设置串口的硬件通信参数，例如数据位、停止位、校验位和接收功能。
+
+```c
+CLOCAL      // 忽略调制解调器控制线，串口程序中通常需要设置
+CREAD       // 使能接收功能
+
+CSIZE       // 数据位宽度的掩码，修改数据位之前通常先清除它
+CS5         // 5 个数据位
+CS6         // 6 个数据位
+CS7         // 7 个数据位
+CS8         // 8 个数据位
+
+CSTOPB      // 设置时使用 2 个停止位，清除时使用 1 个停止位
+
+PARENB      // 使能奇偶校验
+PARODD      // 设置时为奇校验，清除时为偶校验
+
+HUPCL       // 最后一个进程关闭串口时降低调制解调器控制线
+CRTSCTS     // 启用 RTS/CTS 硬件流控
+```
+
+常见设置：
+
+```c
+/* 允许本地连接并使能接收 */
+newtio.c_cflag |= CLOCAL | CREAD;
+
+/* 设置为 8 个数据位 */
+newtio.c_cflag &= ~CSIZE;
+newtio.c_cflag |= CS8;
+
+/* 设置为 1 个停止位 */
+newtio.c_cflag &= ~CSTOPB;
+
+/* 关闭奇偶校验 */
+newtio.c_cflag &= ~PARENB;
+
+/* 关闭硬件流控 */
+newtio.c_cflag &= ~CRTSCTS;
+```
+
+---
+
+##### c_iflag 常用宏
+
+c_iflag 用于控制接收到的数据如何处理。
+
+```c
+IGNBRK      // 忽略 BREAK 状态
+BRKINT      // 检测到 BREAK 时产生中断处理
+
+IGNPAR      // 忽略存在奇偶校验错误或帧错误的字符
+PARMRK      // 对奇偶校验错误或帧错误进行特殊标记
+INPCK       // 启用输入数据的奇偶校验检查
+ISTRIP      // 将接收到字符的最高位清零
+
+INLCR       // 将输入的换行符 NL 转换为回车符 CR
+IGNCR       // 忽略输入的回车符 CR
+ICRNL       // 将输入的回车符 CR 转换为换行符 NL
+
+IXON        // 启用输出方向的软件流控
+IXOFF       // 启用输入方向的软件流控
+IXANY       // 任意字符都可以重新启动被暂停的输出
+```
+
+例如使用奇偶校验时：
+
+```c
+newtio.c_iflag |= INPCK;
+```
+
+不需要软件流控时通常可以关闭：
+
+```c
+newtio.c_iflag &= ~(IXON | IXOFF | IXANY);
+```
+
+---
+
+##### c_oflag 常用宏
+
+c_oflag 用于设置数据发送出去之前是否进行额外处理。
+
+```c
+OPOST       // 启用输出数据处理
+ONLCR       // 输出 NL 时转换为 CR + NL
+OCRNL       // 输出 CR 时转换为 NL
+ONOCR       // 在每行开头不输出 CR
+ONLRET      // NL 执行回车功能
+```
+
+串口进行原始数据通信时，通常关闭输出处理：
+
+```c
+newtio.c_oflag &= ~OPOST;
+```
+
+这样 write 写入的数据通常不会再经过终端输出转换。
+
+---
+
+##### c_lflag 常用宏
+
+c_lflag 用于控制终端本地的数据处理方式。
+
+```c
+ICANON      // 启用规范模式，按行读取数据
+ECHO        // 回显输入字符
+ECHOE       // 回显擦除字符
+ECHOK       // 执行删除一行时进行相应回显
+ECHONL      // 即使关闭 ECHO，也回显换行符
+
+ISIG        // 使 INTR、QUIT、SUSP 等字符产生信号
+IEXTEN      // 启用实现定义的扩展输入处理
+
+NOFLSH      // 收到信号字符时不清空输入、输出队列
+TOSTOP      // 后台进程向终端写数据时产生 SIGTTOU 信号
+```
+
+串口进行原始数据通信时，通常关闭规范模式、回显和信号处理：
+
+```c
+newtio.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
+```
+
+---
+
+##### c_cc 常用宏
+
+c_cc 是特殊控制字符数组，这些宏作为数组下标使用。
+
+```c
+VINTR       // 中断字符，通常对应 Ctrl+C
+VQUIT       // 退出字符
+VERASE      // 删除前一个字符
+VKILL       // 删除当前输入行
+VEOF        // 文件结束字符
+VEOL        // 行结束字符
+
+VSTART      // 软件流控中的开始字符
+VSTOP       // 软件流控中的停止字符
+VSUSP       // 挂起字符
+
+VMIN        // 非规范模式下 read 返回前至少需要读取的字符数
+VTIME       // 非规范模式下 read 的超时参数
+```
+
+串口应用编程中最常用的是 VMIN 和 VTIME：
+
+```c
+newtio.c_cc[VMIN]  = 1;
+newtio.c_cc[VTIME] = 0;
+```
+
+表示在非规范模式下，read 至少读取到 1 个字符后才返回，并且不使用超时计时。
+
+---
+
+##### 常见的 8N1 原始串口配置
+
+```c
+/* 允许本地连接并使能接收 */
+newtio.c_cflag |= CLOCAL | CREAD;
+
+/* 8 个数据位 */
+newtio.c_cflag &= ~CSIZE;
+newtio.c_cflag |= CS8;
+
+/* 无校验 */
+newtio.c_cflag &= ~PARENB;
+
+/* 1 个停止位 */
+newtio.c_cflag &= ~CSTOPB;
+
+/* 关闭规范模式、回显和信号处理 */
+newtio.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
+
+/* 关闭输出处理 */
+newtio.c_oflag &= ~OPOST;
+
+/* read 至少读取 1 个字节 */
+newtio.c_cc[VMIN]  = 1;
+newtio.c_cc[VTIME] = 0;
+```
+### 10.4.2 数据结构
+#### struct termios
+
+需要包含的头文件：
+
+```c
+#include <termios.h>
+```
+
+struct termios 是 Linux/Unix 中用于保存终端或串口配置参数的结构体。
+
+串口的输入模式、输出模式、数据位、停止位、校验方式以及特殊控制字符等参数，都通过这个结构体进行配置。
+
+常用成员可以表示为：
+
+```c
+struct termios
+{
+    tcflag_t c_iflag;      /* 输入模式标志 */
+    tcflag_t c_oflag;      /* 输出模式标志 */
+    tcflag_t c_cflag;      /* 控制模式标志 */
+    tcflag_t c_lflag;      /* 本地模式标志 */
+    cc_t     c_cc[NCCS];   /* 特殊控制字符 */
+};
+```
+
+不同系统的 struct termios 实际定义可能还包含其他成员。
+
+常用成员：
+
+|成员|作用|
+|---|---|
+|c_iflag|设置输入数据的处理方式|
+|c_oflag|设置输出数据的处理方式|
+|c_cflag|设置串口硬件通信参数|
+|c_lflag|设置终端本地处理方式|
+|c_cc|设置特殊控制字符和读取控制参数|
+
+常见使用流程
+
+```c
+struct termios options;
+
+/* 获取当前配置 */
+tcgetattr(fd, &options);
+
+/* 修改 options 中的各种参数 */
+
+/* 设置波特率 */
+cfsetispeed(&options, B115200);
+cfsetospeed(&options, B115200);
+
+/* 将配置设置到串口 */
+tcsetattr(fd, TCSANOW, &options);
+```
+#### tcflag_t
+
+需要包含的头文件：
+
+```c
+#include <termios.h>
+```
+
+tcflag_t 是 termios 接口定义的一种数据类型，用于保存各种终端和串口模式标志。
+
+struct termios 中下面几个成员都使用 tcflag_t：
+
+```c
+tcflag_t c_iflag;
+tcflag_t c_oflag;
+tcflag_t c_cflag;
+tcflag_t c_lflag;
+```
+
+这些成员中的每一位可以表示不同的配置选项，因此通常通过按位与、按位或等位操作进行修改。
+
+例如：
+
+```c
+options.c_cflag |= CLOCAL;
+```
+
+表示打开 CLOCAL 标志。
+
+```c
+options.c_cflag &= ~CSIZE;
+```
+
+表示清除 CSIZE 对应的数据位设置。
+
+tcflag_t 的具体底层整数类型由系统实现决定，程序通常不需要关心其实际字节大小。
+#### speed_t
+
+需要包含的头文件：
+
+```c
+#include <termios.h>
+```
+
+speed_t 是 termios 接口定义的数据类型，用于表示终端或串口的波特率。
+
+cfsetispeed、cfsetospeed 和 cfsetspeed 的波特率参数都使用 speed_t。
+
+例如：
+
+```c
+int cfsetispeed(struct termios *termios_p, speed_t speed);
+
+int cfsetospeed(struct termios *termios_p, speed_t speed);
+```
+
+设置波特率时通常不直接填写数字，而是使用 termios.h 中定义的波特率宏：
+
+```c
+B9600
+B19200
+B38400
+B57600
+B115200
+```
+
+例如：
+
+```c
+cfsetispeed(&options, B115200);
+cfsetospeed(&options, B115200);
+```
+
+表示将串口输入和输出波特率都设置为 115200。
+
+speed_t 的具体底层整数类型由系统实现决定，程序通常直接使用 B9600、B115200 等波特率宏进行设置。
+### 10.4.3 函数
+#### tcgetattr
+
+```c
+/**
+ * @brief  获取终端或串口当前的 termios 配置参数。
+ *
+ * @param  fd: 已经打开的终端或串口设备的文件描述符。
+ *
+ * @param  termios_p: 指向 struct termios 的指针，
+ *                    用于保存读取到的终端或串口配置。
+ *
+ * @retval 0: 获取成功。
+ *
+ * @retval -1: 获取失败，并设置 errno。
+ */
+#include <termios.h>
+
+int tcgetattr(int fd, struct termios *termios_p);
+```
+
+作用：
+
+tcgetattr 用于读取串口当前的配置参数，并保存到 struct termios 结构体中。
+
+通常在修改串口参数之前，先使用 tcgetattr 获取原来的配置。
+
+```c
+struct termios options;
+
+if (tcgetattr(fd, &options) == -1)
+{
+    /* 获取失败 */
+}
+```
+#### tcsetattr
+
+```c
+/**
+ * @brief  将 struct termios 中的配置设置到终端或串口设备。
+ *
+ * @param  fd: 已经打开的终端或串口设备的文件描述符。
+ *
+ * @param  optional_actions: 指定新的配置什么时候生效。
+ *
+ * @param  termios_p: 指向保存新配置的 struct termios 结构体。
+ *
+ * @retval 0: 设置成功。
+ *
+ * @retval -1: 设置失败，并设置 errno。
+ */
+#include <termios.h>
+
+int tcsetattr(int fd,
+              int optional_actions,
+              const struct termios *termios_p);
+```
+
+optional_actions 常用取值：
+
+```c
+TCSANOW      // 立即使新的配置生效
+
+TCSADRAIN    // 等待已经发送的数据发送完成后，再使新配置生效
+
+TCSAFLUSH    // 等待已经发送的数据发送完成，
+             // 丢弃尚未读取的输入数据，然后使新配置生效
+```
+
+常见使用：
+
+```c
+struct termios options;
+
+/* 修改 options 中的串口参数 */
+
+if (tcsetattr(fd, TCSANOW, &options) == -1)
+{
+    /* 设置失败 */
+}
+```
+#### tcflush
+
+```c
+/**
+ * @brief  清空终端或串口中尚未处理的输入数据或输出数据。
+ *
+ * @param  fd: 已经打开的终端或串口设备的文件描述符。
+ *
+ * @param  queue_selector: 指定需要清空的数据队列。
+ *
+ * @retval 0: 操作成功。
+ *
+ * @retval -1: 操作失败，并设置 errno。
+ */
+#include <termios.h>
+
+int tcflush(int fd, int queue_selector);
+```
+
+queue_selector 常用取值：
+
+```c
+TCIFLUSH     // 丢弃已经接收到、但程序尚未读取的输入数据
+
+TCOFLUSH     // 丢弃等待发送、但尚未发送出去的输出数据
+
+TCIOFLUSH    // 同时清空输入和输出数据
+```
+
+常见使用：
+
+```c
+tcflush(fd, TCIOFLUSH);
+```
+
+表示清空当前串口尚未处理的输入和输出数据。
+#### cfsetispeed
+
+```c
+/**
+ * @brief  设置 struct termios 中的输入波特率。
+ *
+ * @param  termios_p: 指向需要修改的 struct termios 结构体。
+ *
+ * @param  speed: 要设置的输入波特率。
+ *
+ * @retval 0: 设置成功。
+ *
+ * @retval -1: 设置失败。
+ */
+#include <termios.h>
+
+int cfsetispeed(struct termios *termios_p, speed_t speed);
+```
+
+speed 使用 speed_t 类型，通常使用 termios.h 中定义的波特率宏，例如：
+
+```c
+B9600
+B19200
+B38400
+B57600
+B115200
+```
+
+常见使用：
+
+```c
+struct termios options;
+
+cfsetispeed(&options, B115200);
+```
+
+表示把输入波特率设置为 115200。
+
+cfsetispeed 只是修改 struct termios 中保存的配置。
+
+通常还需要调用 tcsetattr，才会把配置真正设置到串口设备。
 # 相关文件
 [[系统修改与环境配置记录]]
 [[嵌入式Linux应用开发完全手册V5.3_IMX6ULL_Pro开发板.pdf]]

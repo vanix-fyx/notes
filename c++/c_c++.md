@@ -137,6 +137,67 @@ result = strcmp("apple", "banana");
  */
 ```
 
+### strncmp：比较字符串
+
+```c
+/**
+ * @brief  比较两个字符串的前 n 个字符。
+ *
+ * @param  s1: 指向第一个字符串。
+ *
+ * @param  s2: 指向第二个字符串。
+ *
+ * @param  n: 最多比较的字符数。
+ *
+ * @retval 0: 两个字符串在前 n 个字符范围内相等。
+ *
+ * @retval <0: s1 小于 s2。
+ *
+ * @retval >0: s1 大于 s2。
+ */
+#include <string.h>
+
+int strncmp(const char *s1, const char *s2, size_t n);
+```
+
+strncmp 从两个字符串的开头开始逐字符比较，最多比较 n 个字符。
+
+基本用法：
+
+```c
+char str1[] = "hello123";
+char str2[] = "hello456";
+
+if (strncmp(str1, str2, 5) == 0)
+{
+    // 前 5 个字符相同
+}
+```
+
+上面的比较结果为 0，因为两个字符串的前 5 个字符都是：
+
+```text
+hello
+```
+
+strncmp 的返回值：
+
+```c
+strncmp(s1, s2, n) == 0    // 相等
+strncmp(s1, s2, n) < 0     // s1 小于 s2
+strncmp(s1, s2, n) > 0     // s1 大于 s2
+```
+
+比较过程中如果在达到 n 个字符之前遇到字符串结束符 '\0'，会根据当前比较结果停止。
+
+如果 n 为 0，则不比较任何字符并返回 0。
+
+strncmp 与 strcmp 的主要区别：
+
+```c
+strcmp(s1, s2);        // 比较整个字符串
+strncmp(s1, s2, n);    // 最多比较前 n 个字符
+```
 ### strlen：计算字符串的长度
 
 ```c
@@ -175,6 +236,73 @@ len == 5
 strlen 只统计 '\0' 前面的字符，所以结果为 5，不包含字符串结束符 '\0'。
 
 返回值类型为 size_t。
+### strstr：查找出现位置
+
+```c
+/**
+ * @brief  在字符串 haystack 中查找字符串 needle 第一次出现的位置。
+ *         也可以实现：@判断字符串中是否包含某个子字符串
+ *                   @查找空字符串
+ *
+ * @param  haystack: 指向被查找的字符串。
+ *
+ * @param  needle: 指向要查找的子字符串。
+ *
+ * @retval 非NULL: 找到子字符串，返回其第一次出现位置的指针。
+ *
+ * @retval NULL: 未找到子字符串。
+ */
+#include <string.h>
+
+char *strstr(const char *haystack, const char *needle);
+```
+
+#### 基本用法
+
+```c
+char str[] = "hello world";
+char *p;
+
+p = strstr(str, "world");
+
+if (p != NULL)
+{
+    printf("%s\n", p);
+}
+```
+
+输出：
+
+```text
+world
+```
+
+strstr 返回的是子字符串在原字符串中第一次出现位置的地址，不会创建新的字符串。
+
+例如：
+
+```c
+char str[] = "hello world";
+
+char *p = strstr(str, "world");
+```
+
+此时 p 指向：
+
+```text
+hello world
+      ↑
+      p
+```
+
+所以：
+
+```c
+printf("%s\n", p);
+```
+
+会从 p 指向的位置一直输出到原字符串结尾。
+
 ### str_delete：字符删除
 
 ```c
@@ -364,6 +492,55 @@ array = malloc(10 * sizeof(int));
  */
 ```
 
+
+### memset
+
+```c
+/**
+ * @brief  将指定内存区域的前 n 个字节设置为指定的值。
+ *
+ * @param  s: 指向需要设置的内存区域。
+ *
+ * @param  c: 要写入的值，实际写入时按 unsigned char 转换。
+ *
+ * @param  n: 需要设置的字节数。
+ *
+ * @retval s: 返回参数 s，即目标内存区域的地址。
+ */
+#include <string.h>
+
+void *memset(void *s, int c, size_t n);
+```
+
+常用于将一块内存清零：
+
+```c
+char buf[100];
+
+memset(buf, 0, sizeof(buf));
+```
+
+执行后，buf 的 100 个字节都会被设置为 0。
+
+也可以设置其他字节值：
+
+```c
+char buf[100];
+
+memset(buf, 'A', sizeof(buf));
+```
+
+执行后，buf 的每个字节都会被设置为字符 'A' 对应的值。
+
+memset 的第三个参数表示字节数，因此常配合 sizeof 使用：
+
+```c
+int arr[10];
+
+memset(arr, 0, sizeof(arr));
+```
+
+memset 是 C 标准库函数，在 C++ 中也可以使用。
 ### free
 
 ```c
@@ -1026,6 +1203,440 @@ int sem_destroy(sem_t *sem);
 sem_destroy(&sem);
 ```
 
+## 1.7 错误处理
+### perror
+
+```c
+/**
+ * @brief  根据当前 errno 的值输出对应的错误信息到标准错误流 stderr。
+ *
+ * @param  s: 输出在错误信息前的提示字符串；
+ *            如果为 NULL 或空字符串，则只输出错误信息。
+ *
+ * @retval 无返回值。
+ */
+#include <stdio.h>
+
+void perror(const char *s);
+```
+
+基本用法：
+
+```c
+FILE *fp = fopen("test.txt", "r");
+
+if (fp == NULL)
+{
+    perror("fopen");
+}
+```
+
+可能输出：
+
+```text
+fopen: No such file or directory
+```
+
+perror 会根据 errno 当前保存的错误码，自动转换并输出对应的错误信息。
+
+### strerror
+
+```c
+/**
+ * @brief  根据错误码获取对应的错误描述字符串。
+ *
+ * @param  errnum: 错误码，通常传入 errno。
+ *
+ * @retval 指向错误描述字符串的指针。
+ */
+#include <string.h>
+
+char *strerror(int errnum);
+```
+
+基本用法：
+
+```c
+#include <errno.h>
+#include <stdio.h>
+#include <string.h>
+
+FILE *fp = fopen("test.txt", "r");
+
+if (fp == NULL)
+{
+    printf("error: %s\n", strerror(errno));
+}
+```
+
+strerror 与 perror 的区别：
+
+```c
+perror("open");          // 直接把错误信息输出到 stderr
+
+strerror(errno);         // 返回错误信息字符串
+```
+
+strerror 适合需要自己决定错误信息如何输出或处理的情况。
+
+## 1.8 输入输出流
+### scanf
+
+```c
+/**
+ * @brief  按照指定格式从标准输入流 stdin 中读取并转换数据。
+ *
+ * @param  format: 格式控制字符串，用于指定输入数据的类型和格式。
+ *
+ * @param  ...: 用于保存读取结果的变量地址。
+ *
+ * @retval >=0: 成功匹配并赋值的数据项数量。
+ *
+ * @retval EOF: 在成功读取任何数据之前发生输入失败或到达文件末尾。
+ */
+#include <stdio.h>
+
+int scanf(const char *restrict format, ...);
+```
+
+基本用法：
+
+```c
+int a;
+
+scanf("%d", &a);
+```
+
+读取多个数据：
+
+```c
+int a;
+float b;
+
+scanf("%d %f", &a, &b);
+```
+
+常用格式说明符：
+
+```c
+%d    // int
+%u    // unsigned int
+%f    // float
+%lf   // double
+%c    // char
+%s    // 字符串
+%x    // 十六进制整数
+%o    // 八进制整数
+```
+
+scanf 的参数通常需要传入变量的地址：
+
+```c
+int a;
+scanf("%d", &a);
+```
+
+字符数组使用 %s 时，数组名本身就是首元素地址，不需要加 &：
+
+```c
+char str[100];
+
+scanf("%99s", str);
+```
+
+%s 遇到空白字符时停止读取，因此不能直接读取包含空格的一整行文本。
+
+可以通过返回值判断实际读取成功的数据数量：
+
+```c
+int a;
+
+if (scanf("%d", &a) == 1)
+{
+    // 成功读取一个整数
+}
+```
+
+### sscanf
+
+```c
+/**
+ * @brief  按照指定格式从字符串中读取并转换数据。
+ *
+ * @param  str: 指向要读取的字符串。
+ *
+ * @param  format: 格式控制字符串，用于指定数据的读取和转换方式。
+ *
+ * @param  ...: 用于保存读取结果的变量地址。
+ *
+ * @retval >0: 成功匹配并赋值的数据项数量。
+ *
+ * @retval 0: 没有成功匹配任何数据项。
+ *
+ * @retval EOF: 在第一次转换之前发生输入失败。
+ */
+#include <stdio.h>
+
+int sscanf(const char *restrict str, const char *restrict format, ...);
+```
+
+#### 基本用法
+
+```c
+char str[] = "123 45.6";
+int a;
+float b;
+
+sscanf(str, "%d %f", &a, &b);
+```
+
+执行后：
+
+```c
+a == 123
+b == 45.6f
+```
+
+sscanf 与 scanf 的主要区别是数据来源不同：
+
+```c
+scanf("%d", &a);          // 从标准输入 stdin 中读取
+sscanf(str, "%d", &a);    // 从字符串 str 中读取
+```
+
+#### 按固定分隔符读取
+
+格式字符串中可以直接指定分隔符。
+
+```c
+char str[] = "100:200";
+int a;
+int b;
+
+sscanf(str, "%d:%d", &a, &b);
+```
+
+执行后：
+
+```c
+a == 100
+b == 200
+```
+
+例如解析日期：
+
+```c
+char str[] = "2026-08-24";
+int year;
+int month;
+int day;
+
+sscanf(str, "%d-%d-%d", &year, &month, &day);
+```
+
+#### %[] 指定可读取的字符
+
+%[] 用于连续读取属于指定字符集合的字符。
+
+```c
+char str[] = "abc123";
+char buf[20];
+
+sscanf(str, "%19[abc]", buf);
+```
+
+执行后：
+
+```c
+buf == "abc"
+```
+
+也可以指定字符范围：
+
+```c
+sscanf(str, "%19[a-z]", buf);    // 读取连续的小写字母
+sscanf(str, "%19[0-9]", buf);    // 读取连续的数字字符
+```
+
+遇到不属于指定集合的字符时停止读取。
+
+#### `%[^]` 按分隔符读取
+在 [] 中使用 ^，表示读取所有“不属于指定字符集合”的字符。
+
+例如读取逗号前的内容：
+
+```c
+char str[] = "hello,world";
+char str1[20];
+char str2[20];
+
+sscanf(str, "%19[^,],%19s", str1, str2);
+```
+
+执行后：
+
+```c
+str1 == "hello"
+str2 == "world"
+```
+
+其中：
+
+```c
+%19[^,]
+```
+
+表示最多读取 19 个字符，直到遇到逗号为止。
+
+也可以读取到换行符：
+
+```c
+char buf[100];
+
+sscanf(str, "%99[^\n]", buf);
+```
+
+表示读取到 '\n' 为止，可以读取包含空格的文本。
+
+#### 按多个固定内容解析
+
+```c
+char str[] = "name:Tom,age:18";
+
+char name[20];
+int age;
+
+sscanf(str, "name:%19[^,],age:%d", name, &age);
+```
+
+执行后：
+
+```c
+name == "Tom"
+age == 18
+```
+
+#### %* 跳过数据
+
+在转换说明符中加入 *，表示读取该部分数据，但不保存。
+
+```c
+char str[] = "100 200";
+int b;
+
+sscanf(str, "%*d %d", &b);
+```
+
+执行后：
+
+```c
+b == 200
+```
+
+也可以结合分隔符使用：
+
+```c
+char str[] = "Tom:18";
+int age;
+
+sscanf(str, "%*[^:]:%d", &age);
+```
+
+执行后：
+
+```c
+age == 18
+```
+
+其中：
+
+```c
+%*[^:]
+```
+
+表示读取 ':' 之前的内容，但不保存。
+
+#### %*c 跳过一个字符
+
+%c 用于读取一个字符，%*c 表示读取一个字符但不保存。
+
+```c
+char str[] = "100,200";
+int a;
+int b;
+
+sscanf(str, "%d%*c%d", &a, &b);
+```
+
+执行后：
+
+```c
+a == 100
+b == 200
+```
+
+如果分隔符是确定的字符，更推荐直接写：
+
+```c
+sscanf(str, "%d,%d", &a, &b);
+```
+
+#### 限制字符串读取长度
+
+读取字符串时，应限制最大字符数，避免数组越界。
+
+```c
+char buf[20];
+
+sscanf(str, "%19s", buf);
+```
+
+长度为 20 的字符数组最多读取 19 个字符，为结尾的 '\0' 保留一个位置。
+
+使用 %[] 时同样可以限制长度：
+
+```c
+char buf[20];
+
+sscanf(str, "%19[^,]", buf);
+```
+
+#### 常用格式
+
+```c
+%d          // 读取 int
+%u          // 读取 unsigned int
+%f          // 读取 float
+%lf         // 读取 double
+%c          // 读取一个字符
+%s          // 读取字符串，遇到空白字符停止
+
+%[abc]      // 读取属于指定字符集合的字符
+%[a-z]      // 读取指定范围内的字符
+%[^,]       // 读取直到遇到 ',' 为止
+%[^\n]      // 读取直到遇到换行符
+
+%*d         // 读取整数但不保存
+%*s         // 读取字符串但不保存
+%*c         // 读取一个字符但不保存
+%*[^,]      // 读取到 ',' 为止但不保存
+```
+
+#### 返回值判断
+
+sscanf 的返回值表示成功赋值的数据项数量。
+
+```c
+int a;
+int b;
+
+if (sscanf(str, "%d,%d", &a, &b) == 2)
+{
+    // 成功读取两个整数
+}
+```
+
+使用 * 跳过的数据不会计入返回值。
 # 2 关键字
 ## restrict
 

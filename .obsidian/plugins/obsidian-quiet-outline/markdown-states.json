@@ -1,12 +1,11 @@
 {
   "Linux/00_Linux_main.md": {
     "expandedKeys": [
-      "item-2-1",
-      "item-1-205",
-      "item-3-250",
-      "item-3-243",
-      "item-3-245",
-      "item-3-219",
+      "item-1-206",
+      "item-3-251",
+      "item-3-244",
+      "item-3-246",
+      "item-3-220",
       "item-1-193",
       "item-2-167",
       "item-3-169",
@@ -14,31 +13,42 @@
       "item-2-185",
       "item-3-180",
       "item-2-177",
-      "item-2-242"
+      "item-1-0",
+      "item-1-184",
+      "item-2-189",
+      "item-3-275",
+      "item-3-279",
+      "item-2-266",
+      "item-3-267",
+      "item-4-268",
+      "item-1-129",
+      "item-2-132",
+      "item-1-166",
+      "item-3-172"
     ],
     "cursor": {
       "from": {
-        "line": 6184,
+        "line": 7299,
         "ch": 0
       },
       "to": {
-        "line": 6184,
+        "line": 7299,
         "ch": 0
       }
     },
-    "scroll": 6163.580729166667
+    "scroll": 7281.598214285715
   },
   "_README/笔记格式提示词.md": {
     "expandedKeys": [],
-    "scroll": 0,
+    "scroll": 34.260416666666664,
     "cursor": {
       "from": {
-        "line": 8,
-        "ch": 20
+        "line": 49,
+        "ch": 0
       },
       "to": {
-        "line": 8,
-        "ch": 20
+        "line": 49,
+        "ch": 0
       }
     }
   },
@@ -84,7 +94,17 @@
       "item-3-2",
       "item-2-0"
     ],
-    "scroll": 0
+    "scroll": 0,
+    "cursor": {
+      "from": {
+        "line": 20,
+        "ch": 0
+      },
+      "to": {
+        "line": 20,
+        "ch": 0
+      }
+    }
   },
   "Linux/系统修改与环境配置记录.md": {
     "expandedKeys": []
@@ -115,25 +135,48 @@
   "c++/c_c++.md": {
     "cursor": {
       "from": {
-        "line": 758,
-        "ch": 1
+        "line": 1624,
+        "ch": 0
       },
       "to": {
-        "line": 758,
-        "ch": 1
+        "line": 1624,
+        "ch": 0
       }
     },
     "expandedKeys": [
       "item-1-0",
-      "item-2-12",
-      "item-2-8",
+      "item-2-11",
       "item-2-1",
-      "item-2-14",
       "item-2-16",
-      "item-2-27",
-      "item-1-33",
-      "item-3-24"
+      "item-2-37",
+      "item-2-40",
+      "item-3-7"
     ],
-    "scroll": 747.87158808933
+    "scroll": 1603.4818481848185
+  },
+  "Linux/03_TTY体系中设备节点的差别.md": {
+    "expandedKeys": [
+      "item-2-0",
+      "item-3-2",
+      "item-4-4",
+      "item-3-8"
+    ],
+    "scroll": 112.34895833333333,
+    "cursor": {
+      "from": {
+        "line": 118,
+        "ch": 60
+      },
+      "to": {
+        "line": 118,
+        "ch": 60
+      }
+    }
+  },
+  "Linux/04_TTY驱动程序框架.md": {
+    "expandedKeys": [
+      "item-2-0"
+    ],
+    "scroll": 0
   }
 }
