@@ -257,7 +257,7 @@ strlen 只统计 '\0' 前面的字符，所以结果为 5，不包含字符串�
 char *strstr(const char *haystack, const char *needle);
 ```
 
-#### 基本用法
+基本用法
 
 ```c
 char str[] = "hello world";
@@ -413,6 +413,36 @@ buf 中保存的实际内容通常为：
 ```
 
 因为 fgets 会保留读取到的换行符。
+### atoi：str转int
+
+atoi() 用于将字符串形式的十进制整数转换为 int 类型整数。转换时会跳过字符串开头的空白字符，并识别可选的正负号，随后从第一个数字开始转换，遇到非数字字符时停止。
+
+```c
+/**
+ * @brief  将字符串形式的十进制整数转换为 int 类型整数。
+ *
+ * @param  nptr: 指向待转换字符串的指针。
+ *
+ * @retval 转换成功: 返回转换得到的 int 类型整数。
+ *
+ * @retval 无有效数字: 返回 0。
+ */
+#include <stdlib.h>
+
+int atoi(const char *nptr);
+```
+
+代码示例：
+
+```c
+#include <stdlib.h>
+
+char str[] = "-123";
+int num;
+
+/* 将字符串 "-123" 转换为整数 -123 */
+num = atoi(str);
+```
 ## 1.2 动态内存管理
 
 ### calloc

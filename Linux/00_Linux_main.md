@@ -3389,12 +3389,705 @@ kill -9 1234
 kill命令要谨慎使用
 不要随便结束不认识的系统进程，否则可能导致开发板运行异常
 ```
+# 7 Linux 开发接口
 
-# 7 宏
+## 7.1 文件与设备控制
 
-## 7.1 宏参数
+### 7.1.1 宏
 
-### 输入事件类型宏（EV_*）
+#### fcntl相关（F_*）
+
+##### 概括
+```c
+#include <fcntl.h>
+
+#define F_DUPFD          0    /* 复制文件描述符 */
+#define F_GETFD          1    /* 获取文件描述符标志 */
+#define F_SETFD          2    /* 设置文件描述符标志 */
+#define F_GETFL          3    /* 获取文件状态标志 */
+#define F_SETFL          4    /* 设置文件状态标志 */
+
+#define F_GETLK          5    /* 查询是否存在冲突的文件记录锁 */
+#define F_SETLK          6    /* 非阻塞地设置或解除文件记录锁 */
+#define F_SETLKW         7    /* 阻塞地设置或解除文件记录锁 */
+
+#define F_SETOWN         8    /* 设置异步 I/O 信号的接收者 */
+#define F_GETOWN         9    /* 获取异步 I/O 信号的接收者 */
+
+#define F_SETSIG         10   /* 设置异步 I/O 通知使用的信号 */
+#define F_GETSIG         11   /* 获取异步 I/O 通知使用的信号 */
+
+#define F_GETLK64        12   /* 使用 struct flock64 查询文件记录锁 */
+#define F_SETLK64        13   /* 使用 struct flock64 非阻塞地设置或解除文件记录锁 */
+#define F_SETLKW64       14   /* 使用 struct flock64 阻塞地设置或解除文件记录锁 */
+
+#define F_SETOWN_EX      15   /* 使用 struct f_owner_ex 设置异步 I/O 信号接收者 */
+#define F_GETOWN_EX      16   /* 使用 struct f_owner_ex 获取异步 I/O 信号接收者 */
+
+#define F_GETOWNER_UIDS  17   /* 获取异步 I/O 信号接收者相关的用户 ID */
+
+#define F_OFD_GETLK      36   /* 查询是否存在冲突的打开文件描述锁 */
+#define F_OFD_SETLK      37   /* 非阻塞地设置或解除打开文件描述锁 */
+#define F_OFD_SETLKW     38   /* 阻塞地设置或解除打开文件描述锁 */
+```
+
+##### F_SETOWN
+
+```c
+/**
+ * @brief  设置文件描述符异步 I/O 信号的接收者。
+ *
+ * @param  fd: 需要设置的文件描述符。
+ *
+ * @param  owner: 接收异步通知信号的进程或进程组。
+ *                正数表示进程 ID；
+ *                负数表示进程组 ID。
+ *
+ * @retval 0: 设置成功。
+ *
+ * @retval -1: 设置失败，并设置 errno。
+ *
+ * @note   F_SETOWN 是 fcntl() 的命令宏，不是函数。
+ * @note   还需要通过 F_SETFL 设置 FASYNC，
+ *         才能真正开启异步通知。
+ */
+#include <fcntl.h>
+
+fcntl(fd, F_SETOWN, owner);
+```
+
+代码示例：
+
+```c
+fcntl(fd, F_SETOWN, getpid());
+
+/*
+ * 将当前进程设置为 fd 的异步通知信号接收者。
+ *
+ * 当 fd 产生异步 I/O 事件时，
+ * 内核会把信号发送给当前进程。
+ */
+```
+
+##### F_GETFL
+
+```c
+/**
+ * @brief  获取文件描述符当前的文件状态标志。
+ *
+ * @param  fd: 需要获取状态标志的文件描述符。
+ *
+ * @retval 成功: 返回文件描述符当前的文件状态标志。
+ *
+ * @retval -1: 获取失败，并设置 errno。
+ *
+ * @note   F_GETFL 是 fcntl() 的命令宏，不是函数。
+ * @note   使用 F_GETFL 时不需要第三个参数。
+ */
+#include <fcntl.h>
+
+fcntl(fd, F_GETFL);
+```
+
+代码示例：
+
+```c
+int flags;
+
+flags = fcntl(fd, F_GETFL);
+
+/*
+ * flags 保存 fd 当前的文件状态标志。
+ *
+ * 文件状态指的是这个已经打开的文件描述符 fd 当前采用了什么访问方式，
+ * 以及启用了哪些文件状态标志
+ * example:
+ * O_RDONLY      只读方式
+ * O_NONBLOCK    非阻塞方式
+ *
+ * 修改文件状态标志前先获取原有标志，
+ * 可以避免原来的状态标志被覆盖。
+ */
+```
+
+##### F_SETFL
+
+```c
+/**
+ * @brief  设置文件描述符的文件状态标志。
+ *
+ * @param  fd: 需要设置状态标志的文件描述符。
+ *
+ * @param  flags: 需要设置的文件状态标志。
+ *
+ * @retval 0: 设置成功。
+ *
+ * @retval -1: 设置失败，并设置 errno。
+ *
+ * @note   F_SETFL 是 fcntl() 的命令宏，不是函数。
+ */
+#include <fcntl.h>
+
+fcntl(fd, F_SETFL, flags);
+```
+
+代码示例：
+
+```c
+fcntl(fd, F_SETFL, flags | FASYNC);
+
+/*
+ * 保留 flags 中原来的文件状态标志，
+ * 并为 fd 开启异步 I/O 信号通知。
+ */
+
+FASYNC
+/**
+ * @brief  开启文件描述符的异步 I/O 信号通知。
+ *
+ * @note   FASYNC 是文件状态标志，不是 fcntl() 的命令宏。
+ * @note   FASYNC 需要配合 F_SETFL 使用。
+ * @note   当 fd 产生异步 I/O 事件时，内核会向
+ *         F_SETOWN 指定的进程发送 SIGIO。
+ */
+#include <fcntl.h>
+
+#define FASYNC 00020000
+```
+
+### 7.1.2 函数
+#### ioctl : 设备控制函数
+
+```c
+/**
+ * @brief  向设备驱动发送控制命令，用于控制设备或获取设备状态。
+ *
+ * @param  fd：文件描述符。
+ *         该参数由 open 函数打开设备文件后获得。
+ *
+ * @param  request：控制命令。
+ *         该参数用于告诉驱动程序要执行什么操作。
+ *
+ *         @arg	framebuffer 中常用 request 可以是以下值：
+ *				 FBIOGET_VSCREENINFO
+ *               获取屏幕可变参数信息。
+ *               第三个参数应传入 struct fb_var_screeninfo 结构体地址
+ *
+ * @param  ...：可变参数。
+ *         该参数是否需要传入，由 request 决定。
+ *         如果 request 需要向驱动传递数据，或需要从驱动获取数据，
+ *         则该参数通常传入对应变量或结构体的地址。
+ *		   example:
+ *			static struct fb_var_screeninfo var;
+ *			ioctl(fd_fb, FBIOGET_VSCREENINFO, &var)
+ *
+ * @retval 非负数: 调用成功。 
+ * 				具体返回值由 request 决定； 
+ * 				某些命令成功时返回 0， 
+ * 				某些命令成功时返回数据长度或其他非负结果。 
+ * 
+ * @retval -1: 调用失败，并设置 errno。
+ */
+#include <sys/ioctl.h>
+int ioctl(int fd, unsigned long request, ...);
+
+example:
+static struct fb_var_screeninfo var;
+ioctl(fd_fb, FBIOGET_VSCREENINFO, &var)
+```
+
+#### fcntl：文件描述符控制函数
+
+```c
+/**
+ * @brief  对已经打开的文件描述符进行控制操作，
+ *         如获取或修改文件状态标志、设置异步通知接收者等。
+ *
+ * @param  fd: 需要控制的文件描述符。
+ *
+ * @param  cmd: 要执行的控制命令，如 F_GETFL、F_SETFL、F_SETOWN。
+ *
+ * @param  ...: 可选的第三个参数，其类型和含义由 cmd 决定。
+ *
+ * @retval 成功: 返回值由 cmd 决定。
+ *
+ * @retval -1: 调用失败，并设置 errno。
+ */
+#include <fcntl.h>
+
+int fcntl(int fd, int cmd, ...);
+```
+
+代码示例：
+
+```c
+int flags;
+int ret;
+
+flags = fcntl(fd, F_GETFL);
+
+/*
+ * F_GETFL：
+ * 获取 fd 当前的文件状态标志。
+ *
+ * 成功时返回文件状态标志；
+ * 失败时返回 -1。
+ */
+
+ret = fcntl(fd, F_SETFL, flags | O_NONBLOCK | O_ASYNC);
+
+/*
+ * F_SETFL：
+ * 修改 fd 的文件状态标志。
+ *
+ * O_NONBLOCK：
+ * 将文件描述符设置为非阻塞方式。
+ *
+ * O_ASYNC：
+ * 开启异步 I/O 信号通知。
+ *
+ * 成功时返回 0；
+ * 失败时返回 -1。
+ */
+```
+
+#### fstat：获取文件属性信息函数
+
+```c
+/**
+ * @brief  通过文件描述符获取文件属性信息。
+ *
+ * @param  fd：文件描述符。
+ *         该参数由 open 函数打开文件或设备文件后获得。
+ *
+ * @param  statbuf：保存文件属性信息的结构体地址。
+ *         函数调用成功后，文件大小、权限、类型等信息会被保存到该结构体中。
+ *
+ *         常用成员：
+ *
+ *         @arg st_size
+ *              文件大小，单位是字节。
+ *
+ *         @arg st_mode
+ *              文件类型和权限信息。
+ *
+ *         @arg st_mtime
+ *              文件最后修改时间。
+ *
+ *         @arg st_uid
+ *              文件所有者用户 ID。
+ *
+ *         @arg st_gid
+ *              文件所属用户组 ID。
+ *
+ * @retval 0 ：函数调用成功。
+ * @retval -1：函数调用失败。
+ */
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+int fstat(int fd, struct stat *statbuf);
+```
+
+## 7.2 多文件同时监视(I/O 多路复用)
+
+### 7.2.1 宏
+#### fd_set相关
+
+##### FD_ZERO：清空集合
+
+```c
+/**
+ * @brief  清空 fd_set 文件描述符集合，
+ *         使集合中不包含任何文件描述符。
+ *
+ * @param  set: 指向需要清空的 fd_set 集合。
+ *
+ * @retval 无返回值。
+ *
+ * @note   FD_ZERO 是宏，不是函数。
+ */
+#include <sys/select.h>
+
+FD_ZERO(fd_set *set);
+```
+
+代码示例：
+
+```c
+fd_set readfds;
+
+FD_ZERO(&readfds);
+
+/*
+ * 清空 readfds 集合。
+ *
+ * 使用 FD_SET() 添加文件描述符之前，
+ * 通常需要先调用 FD_ZERO() 清空集合。
+ */
+```
+
+##### FD_SET：将fd加入集合
+
+```c
+/**
+ * @brief  将指定文件描述符加入 fd_set 集合。
+ *
+ * @param  fd: 需要加入集合的文件描述符。
+ *
+ * @param  set: 指向目标 fd_set 集合。
+ *
+ * @retval 无返回值。
+ *
+ * @note   FD_SET 是宏，不是函数。
+ */
+#include <sys/select.h>
+
+FD_SET(int fd, fd_set *set);
+```
+
+代码示例：
+
+```c
+fd_set readfds;
+
+FD_ZERO(&readfds);
+FD_SET(fd, &readfds);
+
+/*
+ * 将 fd 加入 readfds 集合。
+ *
+ * readfds 传给 select() 后，
+ * 可以用于监视 fd 是否变为可读。
+ */
+```
+
+##### FD_ISSET：判断是否在集合
+
+```c
+/**
+ * @brief  判断指定文件描述符是否存在于 fd_set 集合中。
+ *
+ * @param  fd: 需要判断的文件描述符。
+ *
+ * @param  set: 指向需要检查的 fd_set 集合。
+ *
+ * @retval 非 0: fd 存在于集合中。
+ *
+ * @retval 0: fd 不存在于集合中。
+ *
+ * @note   FD_ISSET 是宏，不是函数。
+ */
+#include <sys/select.h>
+
+FD_ISSET(int fd, fd_set *set);
+```
+
+代码示例：
+
+```c
+if (FD_ISSET(fd, &readfds))
+{
+    /*
+     * fd 存在于 readfds 集合中。
+     *
+     * 当 readfds 经过 select() 处理后，
+     * 这里表示 fd 已经处于可读状态。
+     */
+}
+```
+
+### 7.2.2 数据类型
+
+#### fd_set
+
+```c
+/**
+ * @brief  保存文件描述符集合，供 select() 指定需要监视的文件描述符，
+ *         并接收 select() 返回的就绪文件描述符。
+ *
+ *         fd_set 的内部结构由系统实现决定，
+ *         应使用 FD_ZERO()、FD_SET()、FD_CLR() 和 FD_ISSET() 操作。
+ */
+#include <sys/select.h>
+
+fd_set set;
+```
+
+代码示例：
+
+```c
+fd_set readfds;
+
+FD_ZERO(&readfds);
+FD_SET(fd, &readfds);
+
+/*
+ * FD_ZERO()：
+ * 清空 readfds 文件描述符集合。
+ *
+ * FD_SET()：
+ * 将 fd 加入 readfds 集合。
+ *
+ * readfds 可以传给 select()，
+ * 表示监视 fd 是否变为可读。
+ *
+ * select() 返回后：
+ * FD_ISSET(fd, &readfds) 非 0，
+ * 表示 fd 已经可以读取。
+ *
+ * FD_CLR(fd, &readfds)：
+ * 可以将 fd 从集合中移除。
+ */
+```
+
+#### struct pollfd
+
+```c
+/**
+ * @brief  描述 poll() 需要监视的文件描述符及其事件。
+ *
+ * @member fd: 需要监视的文件描述符。
+ *             fd 小于 0 时，poll() 会忽略该元素。
+ *
+ * @member events: 希望监视的事件。
+ *                 常用值为 POLLIN、POLLOUT 等，
+ *                 多个事件可以使用按位或运算组合。
+ *
+ * @member revents: poll() 返回时实际发生的事件。
+ *                  调用前通常设置为 0。
+ */
+#include <poll.h>
+
+struct pollfd {
+    int   fd;
+    short events;
+    short revents;
+};
+```
+
+代码示例：
+
+```c
+struct pollfd pfd;
+
+pfd.fd = fd;
+pfd.events = POLLIN;
+pfd.revents = 0;
+
+/*
+ * fd：
+ * 需要监视的文件描述符。
+ *
+ * POLLIN：
+ * 表示等待文件中出现可读取的数据。
+ *
+ * revents：
+ * poll() 返回后保存实际发生的事件。
+ *
+ * 判断结果：
+ * if (pfd.revents & POLLIN)
+ * 表示该文件描述符当前可以读取数据。
+ */
+```
+
+#### struct timeval
+
+```c
+/**
+ * @brief  保存由秒和微秒组成的时间值，可用于表示时间点或时间间隔。
+ *
+ * @member tv_sec: 秒数。
+ *
+ * @member tv_usec: 不足一秒的微秒数，通常取值范围为 0～999999。
+ */
+#include <sys/time.h>
+
+struct timeval {
+    time_t      tv_sec;
+    suseconds_t tv_usec;
+};
+```
+
+代码示例：
+
+```c
+struct timeval timeout;
+
+timeout.tv_sec = 5;
+timeout.tv_usec = 500000;
+
+/*
+ * timeout.tv_sec：
+ * 表示 5 秒。
+ *
+ * timeout.tv_usec：
+ * 表示 500000 微秒，即 0.5 秒。
+ *
+ * timeout 表示的总时间：
+ * 5.5 秒。
+ */
+```
+
+### 7.2.3 函数
+
+#### poll： 监视文件
+
+```c
+/**
+ * @brief  监视一个或多个文件描述符，等待指定事件发生。
+ *		   没有数据时休眠；硬件产生数据或超时后，驱动唤醒应用
+ *		   休眠指的是当前线程暂时不运行，CPU 可以去执行其他程序
+ *
+ * @param  fds: 指向 struct pollfd 数组。
+ *              数组中的每个元素用于指定一个文件描述符、
+ *              需要监视的事件以及实际发生的事件。
+ *
+ * @param  nfds: fds 数组中的元素个数。
+ *
+ * @param  timeout: 等待超时时间，单位为毫秒。
+ *                  大于 0 表示最多等待指定时间；
+ *                  等于 0 表示立即返回；
+ *                  等于 -1 表示一直等待，直到有事件发生。
+ *
+ * @retval 正数: 已发生事件的文件描述符数量。
+ *
+ * @retval 0: 等待超时，没有事件发生。
+ *
+ * @retval -1: 调用失败，并设置 errno。
+ */
+#include <poll.h>
+
+int poll(struct pollfd *fds, nfds_t nfds, int timeout);
+```
+
+代码示例：
+
+```c
+struct pollfd fds[1];
+int ret;
+
+fds[0].fd = fd;
+fds[0].events = POLLIN;
+fds[0].revents = 0;
+
+ret = poll(fds, 1, 1000);
+
+/*
+ * fds：
+ * 监视 fd 对应的文件。
+ *
+ * POLLIN：
+ * 等待文件中出现可读取的数据。
+ *
+ * 1：
+ * 表示 fds 数组中有 1 个元素。
+ *
+ * 1000：
+ * 最多等待 1000 毫秒。
+ *
+ * ret > 0：
+ * 有文件描述符发生了事件，
+ * 可以通过 fds[0].revents 判断实际发生的事件。
+ *
+ * ret == 0：
+ * 等待超时，没有事件发生。
+ *
+ * ret == -1：
+ * 调用失败，并设置 errno。
+ */
+```
+
+#### select：监视文件
+
+```c
+/**
+ * @brief  等待一个或多个文件描述符变为可读、可写或发生异常。
+ *
+ * @param  nfds: 所有被监视文件描述符中的最大值加 1，注意：不是文件个数。
+ *
+ * @param  readfds: 指向可读文件描述符集合。
+ *                  不监视可读事件时传入 NULL。
+ *
+ * @param  writefds: 指向可写文件描述符集合。
+ *                   不监视可写事件时传入 NULL。
+ *
+ * @param  exceptfds: 指向异常文件描述符集合。
+ *                    不监视异常事件时传入 NULL。
+ *
+ * @param  timeout: 指向超时时间。
+ *                  传入 NULL 表示一直等待；
+ *                  时间为 0 表示立即返回。
+ *
+ * @retval 正数: 已准备好的文件描述符数量。
+ *
+ * @retval 0: 等待超时，没有文件描述符准备好。
+ *
+ * @retval -1: 调用失败，并设置 errno。
+ */
+#include <sys/select.h>
+
+int select(int nfds,
+           fd_set *readfds,
+           fd_set *writefds,
+           fd_set *exceptfds,
+           struct timeval *timeout);
+
+注意：这4个指针参数每次调用 select() 前都要重新设置；select() 返回后会修改 它们的值。
+```
+
+代码示例：
+
+```c
+fd_set readfds;
+struct timeval timeout;
+int ret;
+
+FD_ZERO(&readfds);
+FD_SET(fd, &readfds);
+
+timeout.tv_sec = 5;
+timeout.tv_usec = 0;
+
+ret = select(fd + 1, &readfds, NULL, NULL, &timeout);
+/*
+ * fd + 1：
+ * 被监视的最大文件描述符加 1。
+ *
+ * &readfds：
+ * 等待 fd 变为可读。
+ *
+ * NULL：
+ * 不监视可写事件和异常事件。
+ *
+ * &timeout：
+ * 最多等待 5 秒。
+ *
+ * ret > 0：
+ * 有文件描述符已经准备好；
+ * 可以使用 FD_ISSET(fd, &readfds) 判断 fd 是否可读。
+ *
+ * ret == 0：
+ * 等待超时。
+ *
+ * ret == -1：
+ * 调用失败，并设置 errno。
+ */
+
+/*
+ * FD_ZERO()：
+ * 清空 readfds 文件描述符集合。
+ *
+ * FD_SET()：
+ * 将 fd 加入 readfds 集合。
+ */
+```
+
+## 7.3 输入系统
+
+### 7.3.1 宏
+#### 输入事件类型宏（EV_*）
 
 `EV_*` 宏用于表示 Linux 输入事件的类型。
 
@@ -3425,9 +4118,337 @@ EVIOCGBIT(0, len)
 #define EV_MAX          0x1f    /* 最大事件类型编号 */
 #define EV_CNT          (EV_MAX + 1)
 ```
+#### EVIOCGBIT
 
-### 信号宏（SIG*）
+```c
+/**
+ * @brief  生成查询输入设备能力位图的 ioctl 控制命令。
+ *
+ * @param  ev: 需要查询的事件类型。
+ *             传入 0 时，查询设备支持哪些 EV_* 事件类型；
+ *             传入 EV_KEY、EV_REL、EV_ABS 等时，
+ *             查询该事件类型下支持哪些具体事件。
+ *
+ * @param  len: 接收查询结果的缓冲区大小，单位为字节。
+ *
+ * @return 生成的 ioctl request 控制命令。
+ */
+#include <linux/input.h>
 
+#define EVIOCGBIT(ev, len) \
+        _IOC(_IOC_READ, 'E', 0x20 + (ev), (len))
+```
+
+代码示例：
+
+```c
+//正整数除法向上取整的通用写法：(N + 7) / 8
+unsigned char evbit[((EV_MAX + 1) + 7) / 8];
+int len;
+
+len = ioctl(fd, EVIOCGBIT(0, sizeof(evbit)), evbit);
+len = ioctl(fd, EVIOCGBIT(0, sizeof(evbit)), &evbit);
+
+上面两种写法是一样的，都可以正常运行，但用evbit更规范；
+返回的len是读到了数据字节数
+evbit    → 数组第一个元素的起始地址
+&evbit   → 整个数组的起始地址
+/*
+ * 0：
+ * 查询设备支持哪些 EV_* 事件类型，
+ * 例如 EV_KEY、EV_REL、EV_ABS。
+ *
+ * sizeof(evbit)：
+ * 指定最多读取 sizeof(evbit) 字节的数据。
+ *
+ * evbit：
+ * 用于保存设备支持的事件类型位图。
+ * 某一位为 1，表示支持该位编号对应的事件类型。
+ *
+ * len：
+ * 大于 0 表示成功读取的字节数；
+ * -1 表示 ioctl 调用失败。
+ *
+ * 查询某类事件下支持的具体事件时，
+ * 可以把第一个参数换成对应的事件类型：
+ *
+ * EVIOCGBIT(EV_KEY, sizeof(keybit))
+ * EVIOCGBIT(EV_REL, sizeof(relbit))
+ * EVIOCGBIT(EV_ABS, sizeof(absbit))
+ */
+```
+#### EVIOCGABS
+
+`EVIOCGABS(abs)` 用于生成一个 `ioctl` 请求码，用来**获取输入设备某个绝对坐标轴（ABS）的当前值和属性信息**。
+
+常用于查询：
+
+- `ABS_X`：X 轴
+    
+- `ABS_Y`：Y 轴
+    
+- `ABS_PRESSURE`：压力
+    
+- `ABS_MT_POSITION_X`：多点触摸 X 坐标
+    
+- `ABS_MT_POSITION_Y`：多点触摸 Y 坐标
+    
+- `ABS_MT_SLOT`：多点触摸槽位范围
+    
+
+查询结果保存到 `struct input_absinfo` 中。
+
+```c
+/**
+ * @brief 生成“获取绝对坐标轴信息”的 ioctl 请求码。
+ *
+ * @param abs 要查询的绝对坐标轴类型，
+ *            例如 ABS_X、ABS_Y、ABS_MT_SLOT。
+ *
+ * @note EVIOCGABS() 本身不会读取设备，
+ *       它只是生成 ioctl() 所需要的 request 参数。
+ *
+ * 查询结果通常保存到 struct input_absinfo 中：
+ *
+ * value       当前值
+ * minimum     最小值
+ * maximum     最大值
+ * fuzz        过滤微小抖动时使用的容差值
+ * flat        中心死区范围
+ * resolution  分辨率
+ *
+ * 必需头文件：
+ * #include <linux/input.h>
+ * #include <sys/ioctl.h>
+ */
+
+#include <linux/input.h>
+#include <sys/ioctl.h>
+
+#define EVIOCGABS(abs) \
+        _IOR('E', 0x40 + (abs), struct input_absinfo)
+
+/* 常用形式 */
+ioctl(fd, EVIOCGABS(abs), &absinfo);
+```
+
+代码示例：
+
+```c
+struct input_absinfo slot;
+
+/* 查询多点触摸 ABS_MT_SLOT 的信息 */
+if (ioctl(fd, EVIOCGABS(ABS_MT_SLOT), &slot) == 0) {
+    /* 根据槽位编号的最小值和最大值计算槽位数量 */
+    int max_slots = slot.maximum - slot.minimum + 1;
+}
+```
+
+这里：
+
+`EVIOCGABS(ABS_MT_SLOT)`  
+表示生成“查询 `ABS_MT_SLOT` 信息”的 `ioctl` 命令。
+
+`&slot`  
+用于接收内核返回的 `struct input_absinfo` 数据。
+
+例如：
+
+```text
+slot.minimum = 0
+slot.maximum = 4
+```
+
+则触摸槽位数量为：
+
+`4 - 0 + 1 = 5`
+
+因此：
+
+**`EVIOCGABS()` 决定“查询哪个 ABS 轴”，`ioctl()` 负责真正向驱动获取数据，`struct input_absinfo` 负责保存查询结果。**
+
+### 7.3.2 数据类型
+#### struct input_id
+
+```c
+/**
+ * @brief  保存输入设备的身份信息。
+ *
+ * @member bustype: 设备连接使用的总线类型，
+ *                  例如 BUS_USB、BUS_I2C、BUS_HOST。
+ *
+ * @member vendor: 设备厂商编号。
+ *
+ * @member product: 设备产品编号。
+ *
+ * @member version: 当前输入设备的版本编号。
+ */
+#include <linux/input.h>
+
+struct input_id {
+    __u16 bustype;
+    __u16 vendor;
+    __u16 product;
+    __u16 version;
+};
+```
+
+代码示例：
+
+```c
+struct input_id id;
+
+ioctl(fd, EVIOCGID, &id);
+
+/*
+ * ioctl() 获取成功后：
+ *
+ * id.bustype：
+ * 保存设备的总线类型。
+ *
+ * id.vendor：
+ * 保存设备的厂商编号。
+ *
+ * id.product：
+ * 保存设备的产品编号。
+ *
+ * id.version：
+ * 保存当前输入设备的版本编号。
+ */
+```
+
+#### struct input_event
+
+```c
+/**
+ * @brief  保存输入设备上报的一次标准输入事件。
+ *
+ * @member time: 事件发生的时间。
+ *               tv_sec 保存秒数；
+ *               tv_usec 保存微秒数。
+ *
+ * @member type: 事件类型，
+ *               例如 EV_KEY、EV_REL、EV_ABS。
+ *
+ * @member code: 该事件类型下的具体事件编号，
+ *               例如 KEY_A、REL_X、ABS_X。
+ *
+ * @member value: 事件值。
+ *                具体含义由 type 和 code 决定。
+ */
+#include <linux/input.h>
+
+struct input_event {
+    struct timeval time;
+    __u16 type;
+    __u16 code;
+    __s32 value;
+};
+```
+
+代码示例：
+
+```c
+struct input_event event;
+
+read(fd, &event, sizeof(event));
+
+/*
+ * read() 读取成功后：
+ *
+ * event.time：
+ * 保存事件发生的时间。
+ *
+ * event.type：
+ * 保存事件所属的大类。
+ *
+ * event.code：
+ * 保存该大类下的具体事件编号。
+ *
+ * event.value：
+ * 保存事件值。
+ *
+ * 例如按键事件：
+ * event.type  = EV_KEY；
+ * event.code  = KEY_ENTER；
+ * event.value = 0 表示松开；
+ * event.value = 1 表示按下；
+ * event.value = 2 表示按键自动重复。
+ */
+```
+#### struct input_absinfo
+
+```c
+/**
+ * @brief 保存输入设备某个绝对坐标轴的当前值和属性信息。
+ *        例如可以配合：
+ *	          EVIOCGABS(ABS_X)、EVIOCGABS(ABS_Y)、EVIOCGABS(ABS_MT_SLOT) 等宏，
+ *			  通过 ioctl() 获取对应绝对轴的信息。
+ * value:
+ *     当前值。
+ *
+ * minimum:
+ *     该绝对轴能够取到的最小值。
+ *
+ * maximum:
+ *     该绝对轴能够取到的最大值。
+ *
+ * fuzz:
+ *     用于过滤输入数据微小抖动的容差值。
+ *
+ * flat:
+ *     中心无效区域（死区）范围。
+ *
+ * resolution:
+ *     该绝对轴的分辨率。
+ *
+ * 必需头文件：
+ * #include <linux/input.h>
+ */
+
+#include <linux/input.h>
+
+struct input_absinfo {
+    __s32 value;         /* 当前值 */
+    __s32 minimum;       /* 最小值 */
+    __s32 maximum;       /* 最大值 */
+    __s32 fuzz;          /* 抖动过滤容差 */
+    __s32 flat;          /* 死区范围 */
+    __s32 resolution;    /* 分辨率 */
+};
+```
+
+代码示例：
+
+```c
+#include <linux/input.h>
+#include <sys/ioctl.h>
+
+struct input_absinfo slot;
+
+/* 获取 ABS_MT_SLOT 的范围信息 */
+if (ioctl(fd, EVIOCGABS(ABS_MT_SLOT), &slot) == 0) {
+    int max_slots = slot.maximum - slot.minimum + 1;
+}
+```
+
+例如：
+
+```text
+slot.minimum = 0
+slot.maximum = 4
+```
+
+则：
+
+```text
+max_slots = 4 - 0 + 1 = 5
+```
+
+表示设备支持 `5` 个多点触摸槽位。
+## 7.4 信号
+
+### 7.4.1 宏
 #### 信号编号宏
 
 `SIG*` 宏用于表示进程接收到的信号类型。
@@ -3617,1238 +4638,8 @@ if (ret == SIG_ERR)
      */
 }
 ```
-
-### fd控制宏（F_*）
-
-#### 概括
-
-```c
-#include <fcntl.h>
-
-#define F_DUPFD          0    /* 复制文件描述符 */
-#define F_GETFD          1    /* 获取文件描述符标志 */
-#define F_SETFD          2    /* 设置文件描述符标志 */
-#define F_GETFL          3    /* 获取文件状态标志 */
-#define F_SETFL          4    /* 设置文件状态标志 */
-
-#define F_GETLK          5    /* 查询是否存在冲突的文件记录锁 */
-#define F_SETLK          6    /* 非阻塞地设置或解除文件记录锁 */
-#define F_SETLKW         7    /* 阻塞地设置或解除文件记录锁 */
-
-#define F_SETOWN         8    /* 设置异步 I/O 信号的接收者 */
-#define F_GETOWN         9    /* 获取异步 I/O 信号的接收者 */
-
-#define F_SETSIG         10   /* 设置异步 I/O 通知使用的信号 */
-#define F_GETSIG         11   /* 获取异步 I/O 通知使用的信号 */
-
-#define F_GETLK64        12   /* 使用 struct flock64 查询文件记录锁 */
-#define F_SETLK64        13   /* 使用 struct flock64 非阻塞地设置或解除文件记录锁 */
-#define F_SETLKW64       14   /* 使用 struct flock64 阻塞地设置或解除文件记录锁 */
-
-#define F_SETOWN_EX      15   /* 使用 struct f_owner_ex 设置异步 I/O 信号接收者 */
-#define F_GETOWN_EX      16   /* 使用 struct f_owner_ex 获取异步 I/O 信号接收者 */
-
-#define F_GETOWNER_UIDS  17   /* 获取异步 I/O 信号接收者相关的用户 ID */
-
-#define F_OFD_GETLK      36   /* 查询是否存在冲突的打开文件描述锁 */
-#define F_OFD_SETLK      37   /* 非阻塞地设置或解除打开文件描述锁 */
-#define F_OFD_SETLKW     38   /* 阻塞地设置或解除打开文件描述锁 */
-```
-
-#### F_SETOWN
-
-```c
-/**
- * @brief  设置文件描述符异步 I/O 信号的接收者。
- *
- * @param  fd: 需要设置的文件描述符。
- *
- * @param  owner: 接收异步通知信号的进程或进程组。
- *                正数表示进程 ID；
- *                负数表示进程组 ID。
- *
- * @retval 0: 设置成功。
- *
- * @retval -1: 设置失败，并设置 errno。
- *
- * @note   F_SETOWN 是 fcntl() 的命令宏，不是函数。
- * @note   还需要通过 F_SETFL 设置 FASYNC，
- *         才能真正开启异步通知。
- */
-#include <fcntl.h>
-
-fcntl(fd, F_SETOWN, owner);
-```
-
-代码示例：
-
-```c
-fcntl(fd, F_SETOWN, getpid());
-
-/*
- * 将当前进程设置为 fd 的异步通知信号接收者。
- *
- * 当 fd 产生异步 I/O 事件时，
- * 内核会把信号发送给当前进程。
- */
-```
-
-#### F_GETFL
-
-```c
-/**
- * @brief  获取文件描述符当前的文件状态标志。
- *
- * @param  fd: 需要获取状态标志的文件描述符。
- *
- * @retval 成功: 返回文件描述符当前的文件状态标志。
- *
- * @retval -1: 获取失败，并设置 errno。
- *
- * @note   F_GETFL 是 fcntl() 的命令宏，不是函数。
- * @note   使用 F_GETFL 时不需要第三个参数。
- */
-#include <fcntl.h>
-
-fcntl(fd, F_GETFL);
-```
-
-代码示例：
-
-```c
-int flags;
-
-flags = fcntl(fd, F_GETFL);
-
-/*
- * flags 保存 fd 当前的文件状态标志。
- *
- * 文件状态指的是这个已经打开的文件描述符 fd 当前采用了什么访问方式，
- * 以及启用了哪些文件状态标志
- * example:
- * O_RDONLY      只读方式
- * O_NONBLOCK    非阻塞方式
- *
- * 修改文件状态标志前先获取原有标志，
- * 可以避免原来的状态标志被覆盖。
- */
-```
-
-#### F_SETFL
-
-```c
-/**
- * @brief  设置文件描述符的文件状态标志。
- *
- * @param  fd: 需要设置状态标志的文件描述符。
- *
- * @param  flags: 需要设置的文件状态标志。
- *
- * @retval 0: 设置成功。
- *
- * @retval -1: 设置失败，并设置 errno。
- *
- * @note   F_SETFL 是 fcntl() 的命令宏，不是函数。
- */
-#include <fcntl.h>
-
-fcntl(fd, F_SETFL, flags);
-```
-
-代码示例：
-
-```c
-fcntl(fd, F_SETFL, flags | FASYNC);
-
-/*
- * 保留 flags 中原来的文件状态标志，
- * 并为 fd 开启异步 I/O 信号通知。
- */
-
-FASYNC
-/**
- * @brief  开启文件描述符的异步 I/O 信号通知。
- *
- * @note   FASYNC 是文件状态标志，不是 fcntl() 的命令宏。
- * @note   FASYNC 需要配合 F_SETFL 使用。
- * @note   当 fd 产生异步 I/O 事件时，内核会向
- *         F_SETOWN 指定的进程发送 SIGIO。
- */
-#include <fcntl.h>
-
-#define FASYNC 00020000
-```
-
-## 7.2 宏函数
-
-### EVIOCGBIT
-
-```c
-/**
- * @brief  生成查询输入设备能力位图的 ioctl 控制命令。
- *
- * @param  ev: 需要查询的事件类型。
- *             传入 0 时，查询设备支持哪些 EV_* 事件类型；
- *             传入 EV_KEY、EV_REL、EV_ABS 等时，
- *             查询该事件类型下支持哪些具体事件。
- *
- * @param  len: 接收查询结果的缓冲区大小，单位为字节。
- *
- * @return 生成的 ioctl request 控制命令。
- */
-#include <linux/input.h>
-
-#define EVIOCGBIT(ev, len) \
-        _IOC(_IOC_READ, 'E', 0x20 + (ev), (len))
-```
-
-代码示例：
-
-```c
-//正整数除法向上取整的通用写法：(N + 7) / 8
-unsigned char evbit[((EV_MAX + 1) + 7) / 8];
-int len;
-
-len = ioctl(fd, EVIOCGBIT(0, sizeof(evbit)), evbit);
-len = ioctl(fd, EVIOCGBIT(0, sizeof(evbit)), &evbit);
-
-上面两种写法是一样的，都可以正常运行，但用evbit更规范；
-返回的len是读到了数据字节数
-evbit    → 数组第一个元素的起始地址
-&evbit   → 整个数组的起始地址
-/*
- * 0：
- * 查询设备支持哪些 EV_* 事件类型，
- * 例如 EV_KEY、EV_REL、EV_ABS。
- *
- * sizeof(evbit)：
- * 指定最多读取 sizeof(evbit) 字节的数据。
- *
- * evbit：
- * 用于保存设备支持的事件类型位图。
- * 某一位为 1，表示支持该位编号对应的事件类型。
- *
- * len：
- * 大于 0 表示成功读取的字节数；
- * -1 表示 ioctl 调用失败。
- *
- * 查询某类事件下支持的具体事件时，
- * 可以把第一个参数换成对应的事件类型：
- *
- * EVIOCGBIT(EV_KEY, sizeof(keybit))
- * EVIOCGBIT(EV_REL, sizeof(relbit))
- * EVIOCGBIT(EV_ABS, sizeof(absbit))
- */
-```
-### `EVIOCGABS`
-
-`EVIOCGABS(abs)` 用于生成一个 `ioctl` 请求码，用来**获取输入设备某个绝对坐标轴（ABS）的当前值和属性信息**。
-
-常用于查询：
-
-- `ABS_X`：X 轴
-    
-- `ABS_Y`：Y 轴
-    
-- `ABS_PRESSURE`：压力
-    
-- `ABS_MT_POSITION_X`：多点触摸 X 坐标
-    
-- `ABS_MT_POSITION_Y`：多点触摸 Y 坐标
-    
-- `ABS_MT_SLOT`：多点触摸槽位范围
-    
-
-查询结果保存到 `struct input_absinfo` 中。
-
-```c
-/**
- * @brief 生成“获取绝对坐标轴信息”的 ioctl 请求码。
- *
- * @param abs 要查询的绝对坐标轴类型，
- *            例如 ABS_X、ABS_Y、ABS_MT_SLOT。
- *
- * @note EVIOCGABS() 本身不会读取设备，
- *       它只是生成 ioctl() 所需要的 request 参数。
- *
- * 查询结果通常保存到 struct input_absinfo 中：
- *
- * value       当前值
- * minimum     最小值
- * maximum     最大值
- * fuzz        过滤微小抖动时使用的容差值
- * flat        中心死区范围
- * resolution  分辨率
- *
- * 必需头文件：
- * #include <linux/input.h>
- * #include <sys/ioctl.h>
- */
-
-#include <linux/input.h>
-#include <sys/ioctl.h>
-
-#define EVIOCGABS(abs) \
-        _IOR('E', 0x40 + (abs), struct input_absinfo)
-
-/* 常用形式 */
-ioctl(fd, EVIOCGABS(abs), &absinfo);
-```
-
-代码示例：
-
-```c
-struct input_absinfo slot;
-
-/* 查询多点触摸 ABS_MT_SLOT 的信息 */
-if (ioctl(fd, EVIOCGABS(ABS_MT_SLOT), &slot) == 0) {
-    /* 根据槽位编号的最小值和最大值计算槽位数量 */
-    int max_slots = slot.maximum - slot.minimum + 1;
-}
-```
-
-这里：
-
-`EVIOCGABS(ABS_MT_SLOT)`  
-表示生成“查询 `ABS_MT_SLOT` 信息”的 `ioctl` 命令。
-
-`&slot`  
-用于接收内核返回的 `struct input_absinfo` 数据。
-
-例如：
-
-```text
-slot.minimum = 0
-slot.maximum = 4
-```
-
-则触摸槽位数量为：
-
-`4 - 0 + 1 = 5`
-
-因此：
-
-**`EVIOCGABS()` 决定“查询哪个 ABS 轴”，`ioctl()` 负责真正向驱动获取数据，`struct input_absinfo` 负责保存查询结果。**
-### fd_set相关
-
-#### FD_ZERO：清空集合
-
-```c
-/**
- * @brief  清空 fd_set 文件描述符集合，
- *         使集合中不包含任何文件描述符。
- *
- * @param  set: 指向需要清空的 fd_set 集合。
- *
- * @retval 无返回值。
- *
- * @note   FD_ZERO 是宏，不是函数。
- */
-#include <sys/select.h>
-
-FD_ZERO(fd_set *set);
-```
-
-代码示例：
-
-```c
-fd_set readfds;
-
-FD_ZERO(&readfds);
-
-/*
- * 清空 readfds 集合。
- *
- * 使用 FD_SET() 添加文件描述符之前，
- * 通常需要先调用 FD_ZERO() 清空集合。
- */
-```
-
-#### FD_SET：将fd加入集合
-
-```c
-/**
- * @brief  将指定文件描述符加入 fd_set 集合。
- *
- * @param  fd: 需要加入集合的文件描述符。
- *
- * @param  set: 指向目标 fd_set 集合。
- *
- * @retval 无返回值。
- *
- * @note   FD_SET 是宏，不是函数。
- */
-#include <sys/select.h>
-
-FD_SET(int fd, fd_set *set);
-```
-
-代码示例：
-
-```c
-fd_set readfds;
-
-FD_ZERO(&readfds);
-FD_SET(fd, &readfds);
-
-/*
- * 将 fd 加入 readfds 集合。
- *
- * readfds 传给 select() 后，
- * 可以用于监视 fd 是否变为可读。
- */
-```
-
-#### FD_ISSET：判断是否在集合
-
-```c
-/**
- * @brief  判断指定文件描述符是否存在于 fd_set 集合中。
- *
- * @param  fd: 需要判断的文件描述符。
- *
- * @param  set: 指向需要检查的 fd_set 集合。
- *
- * @retval 非 0: fd 存在于集合中。
- *
- * @retval 0: fd 不存在于集合中。
- *
- * @note   FD_ISSET 是宏，不是函数。
- */
-#include <sys/select.h>
-
-FD_ISSET(int fd, fd_set *set);
-```
-
-代码示例：
-
-```c
-if (FD_ISSET(fd, &readfds))
-{
-    /*
-     * fd 存在于 readfds 集合中。
-     *
-     * 当 readfds 经过 select() 处理后，
-     * 这里表示 fd 已经处于可读状态。
-     */
-}
-```
-
-
-
-# 8 数据类型
-
-## 输入设备相关
-
-### struct input_id
-
-```c
-/**
- * @brief  保存输入设备的身份信息。
- *
- * @member bustype: 设备连接使用的总线类型，
- *                  例如 BUS_USB、BUS_I2C、BUS_HOST。
- *
- * @member vendor: 设备厂商编号。
- *
- * @member product: 设备产品编号。
- *
- * @member version: 当前输入设备的版本编号。
- */
-#include <linux/input.h>
-
-struct input_id {
-    __u16 bustype;
-    __u16 vendor;
-    __u16 product;
-    __u16 version;
-};
-```
-
-代码示例：
-
-```c
-struct input_id id;
-
-ioctl(fd, EVIOCGID, &id);
-
-/*
- * ioctl() 获取成功后：
- *
- * id.bustype：
- * 保存设备的总线类型。
- *
- * id.vendor：
- * 保存设备的厂商编号。
- *
- * id.product：
- * 保存设备的产品编号。
- *
- * id.version：
- * 保存当前输入设备的版本编号。
- */
-```
-
-### struct input_event
-
-```c
-/**
- * @brief  保存输入设备上报的一次标准输入事件。
- *
- * @member time: 事件发生的时间。
- *               tv_sec 保存秒数；
- *               tv_usec 保存微秒数。
- *
- * @member type: 事件类型，
- *               例如 EV_KEY、EV_REL、EV_ABS。
- *
- * @member code: 该事件类型下的具体事件编号，
- *               例如 KEY_A、REL_X、ABS_X。
- *
- * @member value: 事件值。
- *                具体含义由 type 和 code 决定。
- */
-#include <linux/input.h>
-
-struct input_event {
-    struct timeval time;
-    __u16 type;
-    __u16 code;
-    __s32 value;
-};
-```
-
-代码示例：
-
-```c
-struct input_event event;
-
-read(fd, &event, sizeof(event));
-
-/*
- * read() 读取成功后：
- *
- * event.time：
- * 保存事件发生的时间。
- *
- * event.type：
- * 保存事件所属的大类。
- *
- * event.code：
- * 保存该大类下的具体事件编号。
- *
- * event.value：
- * 保存事件值。
- *
- * 例如按键事件：
- * event.type  = EV_KEY；
- * event.code  = KEY_ENTER；
- * event.value = 0 表示松开；
- * event.value = 1 表示按下；
- * event.value = 2 表示按键自动重复。
- */
-```
-### `struct input_absinfo`
-
-```c
-/**
- * @brief 保存输入设备某个绝对坐标轴的当前值和属性信息。
- *        例如可以配合：
- *	          EVIOCGABS(ABS_X)、EVIOCGABS(ABS_Y)、EVIOCGABS(ABS_MT_SLOT) 等宏，
- *			  通过 ioctl() 获取对应绝对轴的信息。
- * value:
- *     当前值。
- *
- * minimum:
- *     该绝对轴能够取到的最小值。
- *
- * maximum:
- *     该绝对轴能够取到的最大值。
- *
- * fuzz:
- *     用于过滤输入数据微小抖动的容差值。
- *
- * flat:
- *     中心无效区域（死区）范围。
- *
- * resolution:
- *     该绝对轴的分辨率。
- *
- * 必需头文件：
- * #include <linux/input.h>
- */
-
-#include <linux/input.h>
-
-struct input_absinfo {
-    __s32 value;         /* 当前值 */
-    __s32 minimum;       /* 最小值 */
-    __s32 maximum;       /* 最大值 */
-    __s32 fuzz;          /* 抖动过滤容差 */
-    __s32 flat;          /* 死区范围 */
-    __s32 resolution;    /* 分辨率 */
-};
-```
-
-代码示例：
-
-```c
-#include <linux/input.h>
-#include <sys/ioctl.h>
-
-struct input_absinfo slot;
-
-/* 获取 ABS_MT_SLOT 的范围信息 */
-if (ioctl(fd, EVIOCGABS(ABS_MT_SLOT), &slot) == 0) {
-    int max_slots = slot.maximum - slot.minimum + 1;
-}
-```
-
-例如：
-
-```text
-slot.minimum = 0
-slot.maximum = 4
-```
-
-则：
-
-```text
-max_slots = 4 - 0 + 1 = 5
-```
-
-表示设备支持 `5` 个多点触摸槽位。
-## 访问硬件方式相关
-
-### struct pollfd
-
-```c
-/**
- * @brief  描述 poll() 需要监视的文件描述符及其事件。
- *
- * @member fd: 需要监视的文件描述符。
- *             fd 小于 0 时，poll() 会忽略该元素。
- *
- * @member events: 希望监视的事件。
- *                 常用值为 POLLIN、POLLOUT 等，
- *                 多个事件可以使用按位或运算组合。
- *
- * @member revents: poll() 返回时实际发生的事件。
- *                  调用前通常设置为 0。
- */
-#include <poll.h>
-
-struct pollfd {
-    int   fd;
-    short events;
-    short revents;
-};
-```
-
-代码示例：
-
-```c
-struct pollfd pfd;
-
-pfd.fd = fd;
-pfd.events = POLLIN;
-pfd.revents = 0;
-
-/*
- * fd：
- * 需要监视的文件描述符。
- *
- * POLLIN：
- * 表示等待文件中出现可读取的数据。
- *
- * revents：
- * poll() 返回后保存实际发生的事件。
- *
- * 判断结果：
- * if (pfd.revents & POLLIN)
- * 表示该文件描述符当前可以读取数据。
- */
-```
-
-### struct timeval
-
-```c
-/**
- * @brief  保存由秒和微秒组成的时间值，可用于表示时间点或时间间隔。
- *
- * @member tv_sec: 秒数。
- *
- * @member tv_usec: 不足一秒的微秒数，通常取值范围为 0～999999。
- */
-#include <sys/time.h>
-
-struct timeval {
-    time_t      tv_sec;
-    suseconds_t tv_usec;
-};
-```
-
-代码示例：
-
-```c
-struct timeval timeout;
-
-timeout.tv_sec = 5;
-timeout.tv_usec = 500000;
-
-/*
- * timeout.tv_sec：
- * 表示 5 秒。
- *
- * timeout.tv_usec：
- * 表示 500000 微秒，即 0.5 秒。
- *
- * timeout 表示的总时间：
- * 5.5 秒。
- */
-```
-
-### fd_set
-
-```c
-/**
- * @brief  保存文件描述符集合，供 select() 指定需要监视的文件描述符，
- *         并接收 select() 返回的就绪文件描述符。
- *
- *         fd_set 的内部结构由系统实现决定，
- *         应使用 FD_ZERO()、FD_SET()、FD_CLR() 和 FD_ISSET() 操作。
- */
-#include <sys/select.h>
-
-fd_set set;
-```
-
-代码示例：
-
-```c
-fd_set readfds;
-
-FD_ZERO(&readfds);
-FD_SET(fd, &readfds);
-
-/*
- * FD_ZERO()：
- * 清空 readfds 文件描述符集合。
- *
- * FD_SET()：
- * 将 fd 加入 readfds 集合。
- *
- * readfds 可以传给 select()，
- * 表示监视 fd 是否变为可读。
- *
- * select() 返回后：
- * FD_ISSET(fd, &readfds) 非 0，
- * 表示 fd 已经可以读取。
- *
- * FD_CLR(fd, &readfds)：
- * 可以将 fd 从集合中移除。
- */
-```
-
-
-
-# 9 功能函数
-
-## sleep：线程暂停
-
-```c
-/**
- * @brief  使当前线程暂停执行指定的秒数。
- *
- * @param  seconds: 需要暂停的秒数。
- *
- * @retval 0: 已经暂停了指定的时间。
- *
- * @retval >0: sleep 被信号提前中断，返回剩余未休眠的秒数。
- */
-#include <unistd.h>
-
-unsigned int sleep(unsigned int seconds);
-```
-
-sleep 是 POSIX 提供的函数，不属于 C/C++ 标准库，在 Linux 中常用。
-
-基本用法：
-
-```c
-sleep(3);
-```
-
-表示当前线程暂停约 3 秒，然后继续向下执行。
-
-例如：
-
-```c
-printf("start\n");
-
-sleep(3);
-
-printf("end\n");
-```
-
-sleep 只会使调用它的当前线程暂停，不会让整个系统停止运行。
-
-## bzero：内存置0
-
-```c
-/**
- * @brief  将指定内存区域的前 n 个字节全部设置为 0。
- *
- * @param  s: 指向需要清零的内存区域。
- *
- * @param  n: 需要清零的字节数。
- *
- * @retval 无返回值。
- */
-#include <strings.h>
-
-void bzero(void *s, size_t n);
-```
-
-基本用法：
-
-```c
-char buf[100];
-
-bzero(buf, sizeof(buf));
-```
-
-执行后，buf 的 100 个字节都会被设置为 0。
-
-bzero 不是 ISO C 标准库函数，它来源于 BSD，在 Linux 等系统中可以使用。
-
-在可移植的 C 程序中，通常可以使用 memset 代替：
-
-```c
-#include <string.h>
-
-memset(buf, 0, sizeof(buf));
-```
-## ioctl : 设备控制函数
-
-```c
-/**
- * @brief  向设备驱动发送控制命令，用于控制设备或获取设备状态。
- *
- * @param  fd：文件描述符。
- *         该参数由 open 函数打开设备文件后获得。
- *
- * @param  request：控制命令。
- *         该参数用于告诉驱动程序要执行什么操作。
- *
- *         @arg	framebuffer 中常用 request 可以是以下值：
- *				 FBIOGET_VSCREENINFO
- *               获取屏幕可变参数信息。
- *               第三个参数应传入 struct fb_var_screeninfo 结构体地址
- *
- * @param  ...：可变参数。
- *         该参数是否需要传入，由 request 决定。
- *         如果 request 需要向驱动传递数据，或需要从驱动获取数据，
- *         则该参数通常传入对应变量或结构体的地址。
- *		   example:
- *			static struct fb_var_screeninfo var;
- *			ioctl(fd_fb, FBIOGET_VSCREENINFO, &var)
- *
- * @retval 非负数: 调用成功。 
- * 				具体返回值由 request 决定； 
- * 				某些命令成功时返回 0， 
- * 				某些命令成功时返回数据长度或其他非负结果。 
- * 
- * @retval -1: 调用失败，并设置 errno。
- */
-#include <sys/ioctl.h>
-int ioctl(int fd, unsigned long request, ...);
-
-example:
-static struct fb_var_screeninfo var;
-ioctl(fd_fb, FBIOGET_VSCREENINFO, &var)
-```
-
-## fcntl：文件描述符控制函数
-
-```c
-/**
- * @brief  对已经打开的文件描述符进行控制操作，
- *         如获取或修改文件状态标志、设置异步通知接收者等。
- *
- * @param  fd: 需要控制的文件描述符。
- *
- * @param  cmd: 要执行的控制命令，如 F_GETFL、F_SETFL、F_SETOWN。
- *
- * @param  ...: 可选的第三个参数，其类型和含义由 cmd 决定。
- *
- * @retval 成功: 返回值由 cmd 决定。
- *
- * @retval -1: 调用失败，并设置 errno。
- */
-#include <fcntl.h>
-
-int fcntl(int fd, int cmd, ...);
-```
-
-代码示例：
-
-```c
-int flags;
-int ret;
-
-flags = fcntl(fd, F_GETFL);
-
-/*
- * F_GETFL：
- * 获取 fd 当前的文件状态标志。
- *
- * 成功时返回文件状态标志；
- * 失败时返回 -1。
- */
-
-ret = fcntl(fd, F_SETFL, flags | O_NONBLOCK | O_ASYNC);
-
-/*
- * F_SETFL：
- * 修改 fd 的文件状态标志。
- *
- * O_NONBLOCK：
- * 将文件描述符设置为非阻塞方式。
- *
- * O_ASYNC：
- * 开启异步 I/O 信号通知。
- *
- * 成功时返回 0；
- * 失败时返回 -1。
- */
-```
-
-## getpid：获取进程ID
-
-```c
-/**
- * @brief  获取当前进程的进程 ID。
- *
- * @param  无。
- *
- * @retval 当前进程的进程 ID。
- */
-#include <sys/types.h>
-#include <unistd.h>
-
-pid_t getpid(void);
-```
-
-代码示例：
-
-```c
-pid_t pid;
-
-pid = getpid();
-
-/*
- * pid 保存当前进程的进程 ID。
- */
-```
-
-## mmap ：地址映射函数
-
-```c
-/**
- * @brief  将文件或设备映射到内存中。
- *
- * @param  addr：指定映射到用户空间的起始地址。
- *         一般填 NULL，表示由系统自动分配地址。
- *
- * @param  length：映射区域的大小，单位是字节。
- *
- * @param  prot：映射区域的访问权限。
- *
- *         @arg PROT_READ
- *              映射区域可读。
- *
- *         @arg PROT_WRITE
- *              映射区域可写。
- *
- *         @arg PROT_READ | PROT_WRITE
- *              映射区域可读可写，开发板 LCD framebuffer 常用这种方式。
- *
- * @param  flags：映射方式。
- *
- *         @arg MAP_SHARED
- *              共享映射，对内存的修改会影响到文件或设备。
- *
- *         @arg MAP_PRIVATE
- *              私有映射，对内存的修改不会影响到原文件。
- *
- * @param  fd：文件描述符。
- *         由 open 函数打开文件或设备后获得。
- *
- * @param  offset：映射起始位置相对于文件开头的偏移量。
- *         一般填 0，表示从文件或设备起始位置开始映射。
- *
- * @retval 成功：返回映射后的内存地址。
- * @retval 失败：返回 MAP_FAILED。
- */
-#include <sys/mman.h>
-
-void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
-fb_base = mmap(NULL, screen_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_fb, 0);
-说明:
-mmap 常用于把 LCD framebuffer 映射到应用程序中。
-映射成功后，就可以像操作普通内存一样操作 LCD 显存。
-```
-
-------
-
-## memset：内存数据设置函数
-
-```c
-/**
- * @brief  将一段内存中的数据设置为指定值。
- *
- * @param  s：要设置的内存起始地址。
- *
- * @param  c：要设置的值。
- *         注意：memset 是按字节设置数据。
- *
- * @param  n：要设置的字节数。
- *
- * @retval 返回 s，也就是内存起始地址。
- */
-#include <string.h>
-
-void *memset(void *s, int c, size_t n);
-memset(fb_base, 0x00, screen_size);
-说明:
-这条语句表示把 framebuffer 显存全部清 0。
-在 LCD 中通常可以理解为清屏。
-
-注意:
-memset 是按字节设置。
-适合清 0 或设置成 0xff。
-如果要设置具体颜色，通常要逐个像素赋值。
-```
-
-------
-
-## munmap：取消地址映射函数
-
-```c
-/**
- * @brief  取消 mmap 建立的内存映射。
- *
- * @param  addr：映射区域的起始地址。
- *         该地址一般是 mmap 的返回值。
- *
- * @param  length：映射区域的大小，单位是字节。
- *         该大小应和 mmap 时的 length 对应。
- *
- * @retval 成功：返回 0。
- * @retval 失败：返回 -1。
- */
-#include <sys/mman.h>
-
-int munmap(void *addr, size_t length);
-munmap(fb_base, screen_size);
-说明:
-mmap 使用完成后，需要调用 munmap 取消映射。
-一般在程序退出前调用。
-```
-
-## fstat：获取文件属性信息函数
-
-```c
-/**
- * @brief  通过文件描述符获取文件属性信息。
- *
- * @param  fd：文件描述符。
- *         该参数由 open 函数打开文件或设备文件后获得。
- *
- * @param  statbuf：保存文件属性信息的结构体地址。
- *         函数调用成功后，文件大小、权限、类型等信息会被保存到该结构体中。
- *
- *         常用成员：
- *
- *         @arg st_size
- *              文件大小，单位是字节。
- *
- *         @arg st_mode
- *              文件类型和权限信息。
- *
- *         @arg st_mtime
- *              文件最后修改时间。
- *
- *         @arg st_uid
- *              文件所有者用户 ID。
- *
- *         @arg st_gid
- *              文件所属用户组 ID。
- *
- * @retval 0 ：函数调用成功。
- * @retval -1：函数调用失败。
- */
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
-int fstat(int fd, struct stat *statbuf);
-```
-
-## poll： 监视文件
-
-```c
-/**
- * @brief  监视一个或多个文件描述符，等待指定事件发生。
- *		   没有数据时休眠；硬件产生数据或超时后，驱动唤醒应用
- *		   休眠指的是当前线程暂时不运行，CPU 可以去执行其他程序
- *
- * @param  fds: 指向 struct pollfd 数组。
- *              数组中的每个元素用于指定一个文件描述符、
- *              需要监视的事件以及实际发生的事件。
- *
- * @param  nfds: fds 数组中的元素个数。
- *
- * @param  timeout: 等待超时时间，单位为毫秒。
- *                  大于 0 表示最多等待指定时间；
- *                  等于 0 表示立即返回；
- *                  等于 -1 表示一直等待，直到有事件发生。
- *
- * @retval 正数: 已发生事件的文件描述符数量。
- *
- * @retval 0: 等待超时，没有事件发生。
- *
- * @retval -1: 调用失败，并设置 errno。
- */
-#include <poll.h>
-
-int poll(struct pollfd *fds, nfds_t nfds, int timeout);
-```
-
-代码示例：
-
-```c
-struct pollfd fds[1];
-int ret;
-
-fds[0].fd = fd;
-fds[0].events = POLLIN;
-fds[0].revents = 0;
-
-ret = poll(fds, 1, 1000);
-
-/*
- * fds：
- * 监视 fd 对应的文件。
- *
- * POLLIN：
- * 等待文件中出现可读取的数据。
- *
- * 1：
- * 表示 fds 数组中有 1 个元素。
- *
- * 1000：
- * 最多等待 1000 毫秒。
- *
- * ret > 0：
- * 有文件描述符发生了事件，
- * 可以通过 fds[0].revents 判断实际发生的事件。
- *
- * ret == 0：
- * 等待超时，没有事件发生。
- *
- * ret == -1：
- * 调用失败，并设置 errno。
- */
-```
-
-## select：监视文件
-
-```c
-/**
- * @brief  等待一个或多个文件描述符变为可读、可写或发生异常。
- *
- * @param  nfds: 所有被监视文件描述符中的最大值加 1，注意：不是文件个数。
- *
- * @param  readfds: 指向可读文件描述符集合。
- *                  不监视可读事件时传入 NULL。
- *
- * @param  writefds: 指向可写文件描述符集合。
- *                   不监视可写事件时传入 NULL。
- *
- * @param  exceptfds: 指向异常文件描述符集合。
- *                    不监视异常事件时传入 NULL。
- *
- * @param  timeout: 指向超时时间。
- *                  传入 NULL 表示一直等待；
- *                  时间为 0 表示立即返回。
- *
- * @retval 正数: 已准备好的文件描述符数量。
- *
- * @retval 0: 等待超时，没有文件描述符准备好。
- *
- * @retval -1: 调用失败，并设置 errno。
- */
-#include <sys/select.h>
-
-int select(int nfds,
-           fd_set *readfds,
-           fd_set *writefds,
-           fd_set *exceptfds,
-           struct timeval *timeout);
-
-注意：这4个指针参数每次调用 select() 前都要重新设置；select() 返回后会修改 它们的值。
-```
-
-代码示例：
-
-```c
-fd_set readfds;
-struct timeval timeout;
-int ret;
-
-FD_ZERO(&readfds);
-FD_SET(fd, &readfds);
-
-timeout.tv_sec = 5;
-timeout.tv_usec = 0;
-
-ret = select(fd + 1, &readfds, NULL, NULL, &timeout);
-/*
- * fd + 1：
- * 被监视的最大文件描述符加 1。
- *
- * &readfds：
- * 等待 fd 变为可读。
- *
- * NULL：
- * 不监视可写事件和异常事件。
- *
- * &timeout：
- * 最多等待 5 秒。
- *
- * ret > 0：
- * 有文件描述符已经准备好；
- * 可以使用 FD_ISSET(fd, &readfds) 判断 fd 是否可读。
- *
- * ret == 0：
- * 等待超时。
- *
- * ret == -1：
- * 调用失败，并设置 errno。
- */
-
-/*
- * FD_ZERO()：
- * 清空 readfds 文件描述符集合。
- *
- * FD_SET()：
- * 将 fd 加入 readfds 集合。
- */
-```
-
-## signal：设置信号处理方式
+### 7.4.2 函数
+#### signal：设置信号处理方式
 
 ```c
 /**
@@ -4903,1145 +4694,288 @@ fcntl(fd, F_SETFL, flags | FASYNC);
  */
 ```
 
+## 7.5 进程与休眠
 
-# 10 第三方库与组件
-
-## 10.1 FreeType 字体库
-
-### 数据类型表
-
-| 类型           | 代码中的变量 | 作用                                         |
-| -------------- | ------------ | -------------------------------------------- |
-| `FT_Library`   | `library`    | FreeType 字体库对象                          |
-| `FT_Face`      | `face`       | 字体对象，表示打开的字体文件及其中的某个字体 |
-| `FT_GlyphSlot` | `slot`       | 字形槽，用来保存当前加载的字形               |
-| `FT_Vector`    | `pen`        | 二维向量，本代码准备作为字形平移量           |
-| `FT_Bitmap`    | `bitmap`     | 字形渲染后生成的位图                         |
-| `FT_Int`       | `i、j、p、q` | FreeType 定义的整数类型                      |
-
-```
-说明：
-FT_Face 内部自带一个字形槽，可以通过 face->glyph 访问。
-
-每次加载新字符时，字形槽中原来的内容会被新字符覆盖。
-```
-
-### 功能函数表
-
-| 函数                 | 代码中的调用                                         | 作用                                             |
-| -------------------- | ---------------------------------------------------- | ------------------------------------------------ |
-| `FT_Init_FreeType`   | `FT_Init_FreeType(&library)`                         | 初始化 FreeType 字体库，得到字体库对象 `library` |
-| `FT_New_Face`        | `FT_New_Face(library, argv[1], 0, &face)`            | 打开字体文件，创建字体对象 `face`                |
-| `FT_Set_Pixel_Sizes` | `FT_Set_Pixel_Sizes(face, font_size, 0)`             | 设置后续加载字形时使用的字体像素大小             |
-| `FT_Set_Transform`   | `FT_Set_Transform(face, 0, &pen)`                    | 设置字形的旋转、缩放或平移；当前代码中被注释     |
-| `FT_Load_Char`       | `FT_Load_Char(face, chinese_str[0], FT_LOAD_RENDER)` | 加载指定字符，并将字形渲染成位图                 |
-
-```text
-说明：
-
-FT_Init_FreeType：
-必须先调用，用来初始化 FreeType 字体库。
-
-FT_New_Face：
-在字体库初始化后调用，用来打开指定字体文件。
-
-FT_Set_Pixel_Sizes：
-在加载字符前调用，用来设置字体显示大小。
-
-FT_Set_Transform：
-在加载字符前调用，用来设置字形变换。
-当前代码中没有实际执行。
-
-FT_Load_Char：
-加载并渲染指定字符。
-渲染结果保存在 face->glyph 中，
-生成的位图可以通过 face->glyph->bitmap 访问。
-```
-
-### 各数据类型之间的关系
-
-```
-FT_Library : FreeType 字体库对象
-    │
-    │ 通过 FT_New_Face() 创建字体对象
-    ▼
-FT_Face : 字体对象，表示打开的字体文件中的一个字体
-    │
-    │ 通过 face->glyph 获取字形槽
-    ▼
-FT_GlyphSlot : 字形槽，保存当前加载字符的字形信息
-    │
-    │ 使用 FT_Load_Char(..., FT_LOAD_RENDER) 渲染字形
-    │
-    │ 通过 slot->bitmap 获取位图
-    ▼
-FT_Bitmap : 字形渲染后的像素位图
-    │
-    │ bitmap->width   位图宽度
-    │ bitmap->rows    位图高度
-    │ bitmap->buffer  位图像素数据
-    ▼
-draw_bitmap() : 用户自己编写的函数，遍历位图数据并绘制到 LCD
-
-
-FT_Vector : 独立的二维向量类型
-    │
-    ├── pen.x：水平方向平移量
-    └── pen.y：垂直方向平移量
-    │
-    └── 可作为 FT_Set_Transform() 的平移参数
-
-
-FT_Int : FreeType 定义的整数类型
-    │
-    └── 用于坐标、循环变量、宽度和高度等普通整数数据
-```
-
-### 数据类型详解
-
-#### face->glyph->bitmap
-
-```
-FT_Face 	  face;
-FT_GlyphSlot  slot;
-	
-slot = face->glyph;
-作用：取得 face 自带的字形槽，并让 slot 指向这个字形槽。
-
-FT_GlyphSlot slot;
-说明：字形槽用于保存当前加载字符的：字形图像,字形位图,字形尺寸,字形位置等信息
-
-每次调用 FT_Load_Char 加载新字符后：slot 中原来的字形数据会被新字符的数据覆盖。
-```
-
-`FT_Bitmap` 在代码中使用的成员：
-
-| 成员             | 作用                     |
-| ---------------- | ------------------------ |
-| `bitmap->width`  | 位图宽度，单位是像素     |
-| `bitmap->rows`   | 位图高度，单位是像素行   |
-| `bitmap->buffer` | 保存位图像素数据的缓冲区 |
-
-#### FT_Library
+### 7.5.1 函数
+#### getpid：获取进程ID
 
 ```c
 /**
- * @brief  FreeType 字体库对象。
+ * @brief  获取当前进程的进程 ID。
  *
- *         FT_Library 是 FreeType 中最上层的对象，
- *         用来管理字体对象、字形对象、内存管理器等资源。
+ * @param  无。
  *
- * 常用成员：
- *         FT_Library 是不透明指针类型，
- *         内部成员不对应用程序公开，不能直接访问。
- *
- * 创建方式：
- *         使用 FT_Init_FreeType() 创建。
- *
- * 代码中的变量：
- *         FT_Library library;
- *
- * 与其他类型的关系：
- *         FT_Library 可以用来创建一个或多个 FT_Face 字体对象。
+ * @retval 当前进程的进程 ID。
  */
-#include <ft2build.h>
+#include <sys/types.h>
+#include <unistd.h>
 
-typedef struct FT_LibraryRec_ *FT_Library;
-```
-
-代码中的使用：
-
-```c
-FT_Library library;
-
-error = FT_Init_FreeType(&library);
-```
-
-```text
-说明：
-
-library：
-保存初始化后的 FreeType 字体库对象。
-
-后续调用 FT_New_Face 时，
-需要把 library 作为参数传入。
-```
-
----
-
-#### FT_Face
-
-```c
-/**
- * @brief  字体对象。
- *
- *         FT_Face 表示字体文件中的一个字体及其样式。
- *         一个字体文件中可能包含一个或多个 FT_Face。
- *
- * 创建方式：
- *         使用 FT_New_Face() 创建。
- *
- * 代码中的变量：
- *         FT_Face face;
- *
- * 与其他类型的关系：
- *         FT_Face 由 FT_Library 创建。
- *         FT_Face 内部拥有一个 FT_GlyphSlot。
- */
-#include <ft2build.h>
-
-typedef struct FT_FaceRec_ *FT_Face;
-```
-
-代码中的使用：
-
-```c
-FT_Face face;
-
-error = FT_New_Face(library, argv[1], 0, &face);
-```
-
-访问字形槽：
-
-```c
-slot = face->glyph;
-```
-
-```text
-说明：
-
-face：
-表示 argv[1] 指定字体文件中的第一个字体对象。
-
-face->glyph：
-取得 face 内部自带的字形槽。
-```
-
----
-
-#### FT_GlyphSlot
-
-```c
-/**
- * @brief  字形槽。
- *
- *         FT_GlyphSlot 用来保存当前加载字符的字形数据。
- *
- *         每次调用 FT_Load_Char() 或 FT_Load_Glyph() 时，
- *         字形槽中原来的内容都会被新字形覆盖。
- *
- * 获取方式：
- *         通过 face->glyph 获取。
- *
- * 代码中的变量：
- *         FT_GlyphSlot slot;
- *
- * 与其他类型的关系：
- *         FT_GlyphSlot 属于 FT_Face。
- *         FT_GlyphSlot 内部包含 FT_Bitmap。
- */
-typedef struct FT_GlyphSlotRec_ *FT_GlyphSlot;
-```
-
-代码中的使用：
-
-```c
-FT_GlyphSlot slot;
-
-slot = face->glyph;
-```
-
-加载字符：
-
-```c
-error = FT_Load_Char(face,
-                     chinese_str[0],
-                     FT_LOAD_RENDER);
-```
-
-取得字形位图：
-
-```c
-slot->bitmap
-```
-
-```text
-说明：
-
-使用 FT_LOAD_RENDER 加载字符后，
-渲染生成的位图会保存在 slot->bitmap 中。
-
-slot 由 face 管理，
-不需要应用程序单独创建或释放。
-```
-
----
-
-#### FT_Vector
-
-```c
-/**
- * @brief  二维向量。
- *
- *         FT_Vector 用来保存二维坐标、移动距离或平移量。
- *
- * 常用成员：
- *
- *         x	：水平方向的坐标或移动量。
- *
- *         y	：垂直方向的坐标或移动量。
- *
- * 代码中的变量：
- *         FT_Vector pen;
- *
- * 代码中的用途：
- *         准备用作 FT_Set_Transform() 的平移参数。
- */
-#include <ft2build.h>
-
-typedef struct FT_Vector_
-{
-    FT_Pos x;
-    FT_Pos y;
-
-} FT_Vector;
-```
-
-代码中的使用目前被注释：
-
-```c
-FT_Vector pen;
-
-//pen.x = 0;
-//pen.y = 0;
-
-//FT_Set_Transform(face, 0, &pen);
-```
-
-```text
-说明：
-
-pen.x：
-字形在水平方向上的平移量。
-
-pen.y：
-字形在垂直方向上的平移量。
-
-当 FT_Vector 用作 FT_Set_Transform 的平移参数时，
-x 和 y 通常使用 26.6 定点格式。
-
-也就是：
-64 表示移动 1 个像素。
-32 表示移动 1/2 个像素。
-```
-
----
-
-#### FT_Bitmap
-
-```c
-/**
- * @brief  字形位图。
- *
- *         FT_Bitmap 用来保存字形渲染后得到的像素数据。
- *
- * 常用成员：
- *
- *         rows
- *              位图的行数，也就是位图高度。
- *
- *         width
- *              位图每行的像素数量，也就是位图宽度。
- *
- *         pitch
- *              位图每行数据实际占用的字节数。
- *
- *         buffer
- *              指向位图像素数据缓冲区。
- *
- *         num_grays
- *              灰度级数量。
- *
- *         pixel_mode
- *              位图像素格式。
- *              例如单色位图、灰度位图或 BGRA 位图。
- *
- *         palette_mode
- *              调色板模式，通常不使用。
- *
- *         palette
- *              调色板地址，通常不使用。
- *
- * 代码中的用途：
- *         接收 FT_Load_Char() 渲染后生成的字形位图。
- *
- * 与其他类型的关系：
- *         FT_Bitmap 是 FT_GlyphSlot 中的成员。
- *         可以通过 slot->bitmap 访问。
- */
-#include <ft2build.h>
-
-typedef struct FT_Bitmap_
-{
-    unsigned int   rows;
-    unsigned int   width;
-    int            pitch;
-    unsigned char *buffer;
-    unsigned short num_grays;
-    unsigned char  pixel_mode;
-    unsigned char  palette_mode;
-    void          *palette;
-
-} FT_Bitmap;
-```
-
-代码中的使用：
-
-```c
-void draw_bitmap(FT_Bitmap *bitmap,
-                 FT_Int x,
-                 FT_Int y);
-```
-
-取得位图宽度和高度：
-
-```c
-FT_Int x_max = x + bitmap->width;
-FT_Int y_max = y + bitmap->rows;
-```
-
-读取像素数据：
-
-```c
-bitmap->buffer[q * bitmap->width + p]
-```
-
-```text
-说明：
-
-bitmap->width：
-字形位图宽度。
-
-bitmap->rows：
-字形位图高度。
-
-bitmap->buffer：
-保存字形每个像素的灰度值。
-
-bitmap->pitch：
-位图一行实际占用的字节数。
-在通用代码中，计算每行地址时应考虑 pitch。
-
-当前代码使用：
-q * bitmap->width + p
-
-这相当于假设：
-每个像素占 1 字节，
-并且 pitch 等于 width。
-```
-
-#### FT_Matrix
-
-`FT_Matrix` 是 FreeType 中的二维变换矩阵，用来对字形进行旋转、缩放、倾斜或镜像。
-
-```
-#include <ft2build.h>
-
-typedef struct FT_Matrix_
-{
-    FT_Fixed xx;
-    FT_Fixed xy;
-    FT_Fixed yx;
-    FT_Fixed yy;
-} FT_Matrix;
-```
-
-矩阵形式：
-
-```
-┌         ┐
-│ xx   xy │
-│ yx   yy │
-└         ┘
-```
-
-代码中的旋转矩阵：
-
-```
-matrix.xx = (FT_Fixed)( cos(angle) * 0x10000L);
-matrix.xy = (FT_Fixed)(-sin(angle) * 0x10000L);
-matrix.yx = (FT_Fixed)( sin(angle) * 0x10000L);
-matrix.yy = (FT_Fixed)( cos(angle) * 0x10000L);
-```
-
-作用：把字形旋转 `angle` 对应的角度。
-
-`FT_Fixed` 是 16.16 定点数：
-
-```
-1.0 = 0x10000
-0.5 = 0x08000
-2.0 = 0x20000
-```
-
-#### FT_BBox
-
-`FT_BBox` 用来保存一个图形或字形的边界框，也就是能够包住该图形的最小矩形。
-
-数据结构
-
-```c
-#include <ft2build.h>
-
-typedef struct FT_BBox_
-{
-    FT_Pos xMin;
-    FT_Pos yMin;
-    FT_Pos xMax;
-    FT_Pos yMax;
-} FT_BBox;
-```
-
-成员说明
-
-| 成员   | 说明                  |
-| ------ | --------------------- |
-| `xMin` | 边界框最左侧的 x 坐标 |
-| `yMin` | 边界框最下方的 y 坐标 |
-| `xMax` | 边界框最右侧的 x 坐标 |
-| `yMax` | 边界框最上方的 y 坐标 |
-
-```text
-左下角坐标：(xMin, yMin)
-右上角坐标：(xMax, yMax)
-```
-
-### 功能函数详解
-
-#### FT_Init_FreeType
-
-```
-/**
- * @brief  初始化 FreeType 字体库。
- *
- * @param  alibrary：用于保存初始化后得到的 FreeType 字体库对象。
- *
- * @retval 0：初始化成功。
- * @retval 非0：初始化失败，返回 FreeType 错误码。
- */
-FT_Error FT_Init_FreeType(FT_Library *alibrary);
-```
-
-#### FT_New_Face
-
-```
-/**
- * @brief  从指定字体文件中创建字体对象。
- *
- * @param  library：已经初始化的 FreeType 字体库对象。
- *
- * @param  filepathname：字体文件路径。
- *
- * @param  face_index：字体文件中的字体索引。
- *         0 表示使用第一个字体对象。
- *
- * @param  aface：用于保存创建后的 FT_Face 字体对象。
- *
- * @retval 0：创建成功。
- * @retval 非0：创建失败，返回 FreeType 错误码。
- */
-#include <ft2build.h>
- 
-FT_Error FT_New_Face(FT_Library library,
-                     const char *filepathname,
-                     FT_Long face_index,
-                     FT_Face *aface);
-```
-
-运行示例：
-
-```
-./程序名 font.ttf
-说明：
-argv[1] 就是 font.ttf。
-```
-
-#### FT_Set_Pixel_Sizes
-
-```
-/**
- * @brief  设置字体的像素大小。
- *
- * @param  face：要设置的字体对象。
- *
- * @param  pixel_width：字体的名义像素宽度。
- *
- * @param  pixel_height：字体的名义像素高度。
- *
- * @retval 0：设置成功。
- * @retval 非0：设置失败，返回 FreeType 错误码。
- */
-FT_Error FT_Set_Pixel_Sizes(FT_Face face,
-                            FT_UInt pixel_width,
-                            FT_UInt pixel_height);
-```
-
-代码中的使用：
-
-```
-int font_size = 24;
-
-FT_Set_Pixel_Sizes(face, font_size, 0);
-参数说明：
-
-face：
-FT_New_Face 创建的字体对象。
-
-font_size：
-字体的像素宽度。
-默认值为 24，也可以由 argv[2] 指定。
-
-0：
-像素高度设置为 0，
-表示高度根据宽度自动确定。
-```
-
-运行示例：
-
-```
-./程序名 font.ttf 32
-说明：
-
-argv[1] 是字体文件路径。
-argv[2] 是字体像素大小。
-
-此时：
-font_size = 32
-注意：
-FT_Set_Pixel_Sizes 设置的是字体的名义像素尺寸。
-
-实际生成的单个字形位图，
-不一定正好等于设置的宽度和高度。
-```
-
-#### FT_Set_Transform
-
-```
-/**
- * @brief  设置加载字形时使用的变换矩阵和平移量。
- *
- * @param  face：要设置的字体对象。
- *
- * @param  matrix：二维变换矩阵。
- *         NULL 表示不进行旋转、缩放等矩阵变换。
- *
- * @param  delta：平移向量。
- *         NULL 表示不进行平移。
- *
- * @retval 无。
- */
-#include <ft2build.h>
- 
-void FT_Set_Transform(FT_Face face,
-                      FT_Matrix *matrix,
-                      FT_Vector *delta);
-```
-
-代码中的使用
-
-```
-FT_Vector pen;
-
-pen.x = 0;
-pen.y = 0;
-
-FT_Set_Transform(face, &matrix, &pen);
-
-含义：
-
-- 使用 matrix 旋转字形；
-- pen.x 和 pen.y`都为 0，因此不进行平移。
-
-FT_Set_Transform() 只是保存变换规则，真正的变换发生在后面加载字形时：
-
-FT_Set_Transform(face, &matrix, &pen);
-
-FT_Load_Char(face,
-             chinese_str[0],
-             FT_LOAD_RENDER);
-```
-
-执行过程：
-
-```
-设置旋转矩阵
-    ↓
-FT_Set_Transform() 保存变换规则
-    ↓
-FT_Load_Char() 加载字形
-    ↓
-旋转字形轮廓
-    ↓
-生成旋转后的位图
-```
-
-常见写法
-
-```
-/* 只旋转，不平移 */
-FT_Set_Transform(face, &matrix, NULL);
-
-/* 不旋转，只平移 */
-FT_Set_Transform(face, NULL, &pen);
-
-/* 不进行任何变换 */
-FT_Set_Transform(face, NULL, NULL);
-```
-
-#### FT_Load_Char
-
-```
-/**
- * @brief  根据字符编码加载字形，并保存到 face 的字形槽中。
- *
- * @param  face：字体对象。
- *
- * @param  char_code：要加载字符的字符编码。
- *
- * @param  load_flags：字形加载方式。
- *
- *         @arg FT_LOAD_RENDER
- *              加载字形后立即把字形渲染成位图。
- *
- * @retval 0：加载成功。
- * @retval 非0：加载失败，返回 FreeType 错误码。
- */
-#include <ft2build.h>
- 
-FT_Error FT_Load_Char(FT_Face face,
-                      FT_ULong char_code,
-                      FT_Int32 load_flags);
-```
-
-代码中的使用：
-
-```
-wchar_t *chinese_str = L"繁";
-
-error = FT_Load_Char(face,
-                     chinese_str[0],
-                     FT_LOAD_RENDER);
-参数说明：
-
-face：
-FT_New_Face 创建的字体对象。
-
-chinese_str[0]：
-宽字符字符串中的第一个字符，
-这里表示汉字“繁”的字符编码。
-
-FT_LOAD_RENDER：
-加载字形后立即渲染成位图。
-```
-
-### 代码执行流程
-
-```
-1. FT_Init_FreeType
-   初始化 FreeType 字体库，得到 library。
-
-2. FT_New_Face
-   打开字体文件，得到 face。
-
-3. face->glyph
-   取得 face 自带的字形槽，保存到 slot。
-
-4. FT_Set_Pixel_Sizes
-   设置字体像素大小。
-
-5. FT_Set_Transform
-   设置字形变换和平移。
-   当前代码中被注释，没有实际执行。
-
-6. FT_Load_Char
-   加载“繁”字并渲染成位图。
-
-7. slot->bitmap
-   取得渲染完成的字形位图。
-
-8. draw_bitmap
-   把字形位图逐像素绘制到 LCD。
-简单记忆：
-
-library：
-FreeType 字体库对象。
-
-face：
-从字体文件创建的字体对象。
-
-slot：
-保存当前字形的字形槽。
-
-bitmap：
-字形渲染后得到的像素位图。
-```
-## 10.2 tslib 触摸屏
-### 10.2.1 命令
-
-#### `ts_print`
-
-```
-在终端中持续打印触摸坐标和压力值：
-
-适合检查触摸屏是否能够正常读取数据。
-```
-
-#### `ts_print_raw`
-
-```
-打印未经校准和过滤的原始触摸数据：
-
-适合检查驱动层是否能够产生原始触摸数据。
-```
-
-#### `ts_calibrate`
-
-```text
-执行触摸屏坐标校准：
-校准完成后，通常会把参数保存到：
-/etc/pointercal
-```
-
-#### `ts_test`
-
-```
-运行单点触摸测试程序：
-
-可以通过图形界面测试画线、拖动等触摸操作。
-```
-
-#### `ts_test_mt`
-
-```
-运行多点触摸测试程序：
-
-适合测试支持多点触摸的触摸屏设备。
-```
-
----
-### 10.2.2 宏
-
-多点触摸（Multi-Touch）绝对事件代码，用于表示触点槽位、位置、压力、接触面积等信息。
-
-```c
-#include <linux/input-event-codes.h>
-
-#define ABS_MT_SLOT         0x2f   /* 当前正在修改的触摸槽位 */
-
-#define ABS_MT_TOUCH_MAJOR  0x30   /* 触摸区域椭圆的主轴大小 */
-#define ABS_MT_TOUCH_MINOR  0x31   /* 触摸区域椭圆的次轴大小，圆形时可省略 */
-
-#define ABS_MT_WIDTH_MAJOR  0x32   /* 接近触摸面的工具区域主轴大小 */
-#define ABS_MT_WIDTH_MINOR  0x33   /* 接近触摸面的工具区域次轴大小 */
-
-#define ABS_MT_ORIENTATION  0x34   /* 触摸椭圆的方向 */
-
-#define ABS_MT_POSITION_X   0x35   /* 触摸点中心的 X 坐标 */
-#define ABS_MT_POSITION_Y   0x36   /* 触摸点中心的 Y 坐标 */
-
-#define ABS_MT_TOOL_TYPE    0x37   /* 触摸工具类型 */
-#define ABS_MT_BLOB_ID      0x38   /* 一组相关触摸数据的编号 */
-#define ABS_MT_TRACKING_ID  0x39   /* 一次触摸接触的唯一跟踪编号 */
-
-#define ABS_MT_PRESSURE     0x3a   /* 触摸压力 */
-#define ABS_MT_DISTANCE     0x3b   /* 触摸工具与表面的悬停距离 */
-
-#define ABS_MT_TOOL_X       0x3c   /* 触摸工具中心的 X 坐标 */
-#define ABS_MT_TOOL_Y       0x3d   /* 触摸工具中心的 Y 坐标 */
-```
-### 10.2.3 数据类型
-
-#### struct tsdev
-
-`struct tsdev` 表示一个由 tslib 管理的触摸屏设备。
-
-它属于**不透明结构体**：`tslib.h` 中只声明了这个结构体，没有公开它的内部成员。因此，应用程序不能直接访问其内部成员，只能通过 `ts_setup()`、`ts_fd()`、`ts_read_mt()`、`ts_close()` 等 tslib 函数操作它。
-
-```c
-/**
- * @brief tslib 触摸屏设备对象。
- *
- * struct tsdev 的内部成员没有在 tslib.h 中公开。
- * 程序一般只声明 struct tsdev 指针。
- *
- * 必需头文件：
- * #include <tslib.h>
- */
-
-#include <tslib.h>
-
-/* tslib.h 中的结构体声明 */
-struct tsdev;
-
-/* 常用的变量声明形式 */
-struct tsdev *ts;
+pid_t getpid(void);
 ```
 
 代码示例：
 
 ```c
-/* ts_setup() 成功后，ts 指向一个 tslib 触摸屏设备对象 */
-struct tsdev *ts = ts_setup(NULL, 0);
+pid_t pid;
 
-if (ts != NULL) {
-    /* 此处可以使用 ts 调用其他 tslib 函数 */
+pid = getpid();
 
-    ts_close(ts);
-}
+/*
+ * pid 保存当前进程的进程 ID。
+ */
 ```
-
----
-
-#### struct ts_sample_mt
-
-| 成员            | 在源文件中的作用          |
-| ------------- | ----------------- |
-| `x`           | 保存触点的 X 坐标        |
-| `y`           | 保存触点的 Y 坐标        |
-| `tracking_id` | 源文件通过它判断槽位中是否存在触点 |
-| `valid`       | 判断本次读取是否包含该槽位的新数据 |
+#### sleep：线程暂停
 
 ```c
 /**
- * @brief 保存一个多点触摸槽位的采样数据，
-		  例如坐标、压力、槽位编号、触点跟踪编号和数据是否有效。
+ * @brief  使当前线程暂停执行指定的秒数。
  *
- * 必需头文件：
- * #include <tslib.h>
+ * @param  seconds: 需要暂停的秒数。
+ *
+ * @retval 0: 已经暂停了指定的时间。
+ *
+ * @retval >0: sleep 被信号提前中断，返回剩余未休眠的秒数。
  */
+#include <unistd.h>
 
-#include <tslib.h>
+unsigned int sleep(unsigned int seconds);
+```
 
-struct ts_sample_mt {
-    int x;                       /* X 坐标 */
-    int y;                       /* Y 坐标 */
-    unsigned int pressure;       /* 压力值 */
+sleep 是 POSIX 提供的函数，不属于 C/C++ 标准库，在 Linux 中常用。
 
-    int slot;                    /* 触摸槽位编号 */
-    int tracking_id;             /* 触点跟踪编号 非0：有触点；0：触点结束/抬起 */
-    int tool_type;               /* 触摸工具类型 */
+基本用法：
 
-    int tool_x;                  /* 触摸工具的 X 坐标 */
-    int tool_y;                  /* 触摸工具的 Y 坐标 */
+```c
+sleep(3);
+```
 
-    unsigned int touch_major;    /* 触摸区域主轴大小 */
-    unsigned int width_major;    /* 触摸工具主轴宽度 */
-    unsigned int touch_minor;    /* 触摸区域次轴大小 */
-    unsigned int width_minor;    /* 触摸工具次轴宽度 */
+表示当前线程暂停约 3 秒，然后继续向下执行。
 
-    int orientation;             /* 触摸区域方向 */
-    int distance;                /* 工具与触摸表面的距离 */
-    int blob_id;                 /* 触点集合编号 */
+例如：
 
-    struct timeval tv;           /* 事件时间 */
+```c
+printf("start\n");
 
-    short pen_down;              /* BTN_TOUCH 状态 通常：1按下，0松开 */
-    short valid;                 /* 本次采样是否包含新数据 非0：有新数据；0：本次没更新 */
+sleep(3);
+
+printf("end\n");
+```
+
+sleep 只会使调用它的当前线程暂停，不会让整个系统停止运行。
+
+#### nanosleep：ns级线程暂停
+
+```c
+/**
+ * @brief  使当前线程暂停指定的一段时间，可以精确到纳秒级。
+ *
+ * @param  req: 指向 timespec 结构体，指定需要暂停的时间。
+ *
+ * @param  rem: 如果休眠被信号中断，用于保存剩余未休眠的时间。
+ *              不需要保存剩余时间时可以设置为 NULL。
+ *
+ * @retval 0: 休眠时间完成。
+ *
+ * @retval -1: 休眠失败或被信号中断，并设置 errno。
+ */
+#include <time.h>
+
+int nanosleep(const struct timespec *req,
+              struct timespec *rem);
+```
+
+req 指向的 timespec 结构体用于指定休眠时间：
+
+```c
+struct timespec {
+    time_t tv_sec;    /* 秒 */
+    long   tv_nsec;   /* 纳秒：0 ~ 999999999 */
 };
 ```
 
-代码示例：
+例如暂停 500 ms：
 
 ```c
-/* 定义并初始化一个多点触摸采样数据 */
-struct ts_sample_mt point = {0};
+struct timespec req;
 
-/* 设置当前触点的数据 */
-point.x = 629;
-point.y = 364;
-point.tracking_id = 10;
-point.valid = 1;
+req.tv_sec  = 0;
+req.tv_nsec = 500 * 1000 * 1000;
 
-/* 数据有效并且当前槽位中存在触点时，读取坐标 */
-if (point.valid && point.tracking_id != -1) {
-    int x = point.x;
-    int y = point.y;
+nanosleep(&req, NULL);
+```
+
+时间换算：
+
+```text
+1 秒  = 1000 毫秒
+1 毫秒 = 1000 微秒
+1 微秒 = 1000 纳秒
+
+500 ms = 500000000 ns
+```
+
+如果 nanosleep() 在休眠过程中被信号中断，并且 rem 不为 NULL，rem 中会保存还没有休眠完的剩余时间：
+
+```c
+struct timespec req;
+struct timespec rem;
+
+req.tv_sec  = 1;
+req.tv_nsec = 0;
+
+if (nanosleep(&req, &rem) == -1)
+{
+    /* rem 中保存剩余休眠时间 */
 }
 ```
 
-### 10.2.4 函数
-
-#### ts_setup()
+## 7.6 内存
+### 7.6.1 函数
+#### bzero：内存置0
 
 ```c
 /**
- * @brief 寻找、打开并配置触摸屏设备。
+ * @brief  将指定内存区域的前 n 个字节全部设置为 0。
  *
- * @param dev_name 触摸屏设备路径。
- *                 传入 NULL 时，由 tslib 查找触摸设备。
+ * @param  s: 指向需要清零的内存区域。
  *
- * @param nonblock 是否使用非阻塞方式。
- *                 0：阻塞方式。
- *                 非 0：非阻塞方式。
+ * @param  n: 需要清零的字节数。
  *
- * @return 成功：返回 struct tsdev 指针。
- * @return 失败：返回 NULL。
- *
- * 必需头文件：
- * #include <tslib.h>
+ * @retval 无返回值。
  */
+#include <strings.h>
 
-#include <tslib.h>
-
-struct tsdev *ts_setup(const char *dev_name, int nonblock);
+void bzero(void *s, size_t n);
 ```
 
-代码示例：
+基本用法：
 
 ```c
-/* NULL：由 tslib 查找设备；0：使用阻塞方式 */
-struct tsdev *ts = ts_setup(NULL, 0);
+char buf[100];
 
-if (ts == NULL) {
-    /* 触摸屏设备打开或配置失败 */
-}
+bzero(buf, sizeof(buf));
 ```
 
----
+执行后，buf 的 100 个字节都会被设置为 0。
 
-#### ts_fd()
+bzero 不是 ISO C 标准库函数，它来源于 BSD，在 Linux 等系统中可以使用。
+
+在可移植的 C 程序中，通常可以使用 memset 代替：
+
+```c
+#include <string.h>
+
+memset(buf, 0, sizeof(buf));
+```
+
+
+#### mmap ：地址映射函数
 
 ```c
 /**
- * @brief 获取 tslib 当前使用的触摸屏设备文件描述符。
+ * @brief  将文件或设备映射到内存中。
  *
- * @param ts 有效的 tslib 触摸屏设备指针。
+ * @param  addr：指定映射到用户空间的起始地址。
+ *         一般填 NULL，表示由系统自动分配地址。
  *
- * @return 返回触摸屏设备的文件描述符。
+ * @param  length：映射区域的大小，单位是字节。
  *
- * 必需头文件：
- * #include <tslib.h>
+ * @param  prot：映射区域的访问权限。
+ *
+ *         @arg PROT_READ
+ *              映射区域可读。
+ *
+ *         @arg PROT_WRITE
+ *              映射区域可写。
+ *
+ *         @arg PROT_READ | PROT_WRITE
+ *              映射区域可读可写，开发板 LCD framebuffer 常用这种方式。
+ *
+ * @param  flags：映射方式。
+ *
+ *         @arg MAP_SHARED
+ *              共享映射，对内存的修改会影响到文件或设备。
+ *
+ *         @arg MAP_PRIVATE
+ *              私有映射，对内存的修改不会影响到原文件。
+ *
+ * @param  fd：文件描述符。
+ *         由 open 函数打开文件或设备后获得。
+ *
+ * @param  offset：映射起始位置相对于文件开头的偏移量。
+ *         一般填 0，表示从文件或设备起始位置开始映射。
+ *
+ * @retval 成功：返回映射后的内存地址。
+ * @retval 失败：返回 MAP_FAILED。
  */
+#include <sys/mman.h>
 
-#include <tslib.h>
-
-int ts_fd(struct tsdev *ts);
+void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
+fb_base = mmap(NULL, screen_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_fb, 0);
+说明:
+mmap 常用于把 LCD framebuffer 映射到应用程序中。
+映射成功后，就可以像操作普通内存一样操作 LCD 显存。
 ```
 
-代码示例：
+------
 
-```c
-/* 必须先获得一个有效的 tslib 设备 */
-struct tsdev *ts = ts_setup(NULL, 0);
-
-if (ts != NULL) {
-    int fd = ts_fd(ts);
-
-    /* 此处可以把 fd 传给 ioctl() 等系统调用 */
-
-    ts_close(ts);
-}
-```
-
----
-
-#### ts_read_mt()
+#### memset：内存数据设置函数
 
 ```c
 /**
- * @brief 读取经过 tslib 处理的多点触摸数据。
+ * @brief  将一段内存中的数据设置为指定值。
  *
- * @param ts    有效的 tslib 触摸屏设备指针。
- * @param samp  保存读取结果的二维数据空间。
- * @param slots 每组数据包含的最大触摸槽位数。
- * @param nr    希望读取的采样组数。
+ * @param  s：要设置的内存起始地址。
  *
- * @return 成功：返回实际读取到的采样组数。
- * @return 失败：返回负数。
+ * @param  c：要设置的值。
+ *         注意：memset 是按字节设置数据。
  *
- * 必需头文件：
- * #include <tslib.h>
+ * @param  n：要设置的字节数。
+ *
+ * @retval 返回 s，也就是内存起始地址。
  */
+#include <string.h>
 
-#include <tslib.h>
+void *memset(void *s, int c, size_t n);
+memset(fb_base, 0x00, screen_size);
+说明:
+这条语句表示把 framebuffer 显存全部清 0。
+在 LCD 中通常可以理解为清屏。
 
-int ts_read_mt(struct tsdev *ts,
-               struct ts_sample_mt **samp,
-               int slots,
-               int nr);
+注意:
+memset 是按字节设置。
+适合清 0 或设置成 0xff。
+如果要设置具体颜色，通常要逐个像素赋值。
 ```
 
-代码示例：
+------
 
-```c
-/************************** 读一组数据 **************************/
-struct ts_sample_mt **samp_mt;
-int max_slots = 5;
-
-samp_mt = malloc(sizeof(*samp_mt));
-samp_mt[0] = calloc(max_slots, sizeof(**samp_mt));
-
-
-if (samp_mt != NULL && samp_mt[0] != NULL) {
-    int ret = ts_read_mt(ts, samp_mt, max_slots, 1);
-}
-
-/************************** 读多组数据 **************************/
-int nr = 2;
-int i;
-
-struct ts_sample_mt **samp_mt;
-
-samp_mt = malloc(nr * sizeof(*samp_mt));
-
-for (i = 0; i < nr; i++) {
-    samp_mt[i] = calloc(max_slots, sizeof(**samp_mt));
-}
-
-if (samp_mt != NULL && samp_mt[0] != NULL) {
-    int ret = ts_read_mt(ts, samp_mt, max_slots, 1);
-}
-```
-
----
-
-#### ts_close()
+#### munmap：取消地址映射函数
 
 ```c
 /**
- * @brief 关闭触摸屏设备并释放相关资源。
+ * @brief  取消 mmap 建立的内存映射。
  *
- * @param ts 有效的 tslib 触摸屏设备指针。
+ * @param  addr：映射区域的起始地址。
+ *         该地址一般是 mmap 的返回值。
  *
- * @return 0：关闭成功。
- * @return 负数：关闭失败。
+ * @param  length：映射区域的大小，单位是字节。
+ *         该大小应和 mmap 时的 length 对应。
  *
- * 必需头文件：
- * #include <tslib.h>
+ * @retval 成功：返回 0。
+ * @retval 失败：返回 -1。
  */
+#include <sys/mman.h>
 
-#include <tslib.h>
-
-int ts_close(struct tsdev *ts);
+int munmap(void *addr, size_t length);
+munmap(fb_base, screen_size);
+说明:
+mmap 使用完成后，需要调用 munmap 取消映射。
+一般在程序退出前调用。
 ```
 
-代码示例：
-
-```c
-/* 必须先打开并配置触摸屏设备 */
-struct tsdev *ts = ts_setup(NULL, 0);
-
-if (ts != NULL) {
-    /* 触摸屏使用完毕后再关闭 */
-    int ret = ts_close(ts);
-
-    if (ret < 0) {
-        /* 关闭触摸屏设备失败 */
-    }
-}
-```
-## 10.3 网络编程
-### 10.3.1 宏
+## 7.7 网络编程
+### 7.7.1 宏
 
 #### INADDR_ANY
 
@@ -6073,7 +5007,7 @@ server_addr.sin_port = htons(8888);
 /* 绑定本机所有 IPv4 网络接口 */
 server_addr.sin_addr.s_addr = INADDR_ANY;
 ```
-### 10.3.2 数据类型
+### 7.7.2 数据类型
 #### sockaddr_in
 
 作用：
@@ -6263,7 +5197,7 @@ recvfrom(sockfd,
          &addrlen);
 ```
 
-### 10.3.3 函数
+### 7.7.3 函数
 #### socket
 
 ```c
@@ -6772,7 +5706,7 @@ printf("client ip: %s\n",
        inet_ntoa(client_addr.sin_addr));
 ```
 
-### 10.3.4 TCP网络编程流程
+### 7.7.4 TCP网络编程流程
 
 ```text
 服务器端                                   客户端
@@ -6799,7 +5733,7 @@ close()                                  close()
 关闭 socket                              关闭 socket
 ```
 
-### 10.3.5 UDP网络编程流程
+### 7.7.5 UDP网络编程流程
 ```
 服务器端                                   客户端
 
@@ -6819,8 +5753,8 @@ close()                                  close()
 关闭 socket                              关闭 socket
 ```
 
-## 10.4 串口
-### 10.4.1 宏
+## 7.8 串口
+### 7.8.1 宏
 #### struct termios相关宏
 
 需要包含的头文件：
@@ -7019,7 +5953,7 @@ newtio.c_oflag &= ~OPOST;
 newtio.c_cc[VMIN]  = 1;
 newtio.c_cc[VTIME] = 0;
 ```
-### 10.4.2 数据结构
+### 7.8.2 数据结构
 #### struct termios
 
 需要包含的头文件：
@@ -7150,7 +6084,7 @@ cfsetospeed(&options, B115200);
 表示将串口输入和输出波特率都设置为 115200。
 
 speed_t 的具体底层整数类型由系统实现决定，程序通常直接使用 B9600、B115200 等波特率宏进行设置。
-### 10.4.3 函数
+### 7.8.3 函数
 #### tcgetattr
 
 ```c
@@ -7309,10 +6243,2452 @@ cfsetispeed(&options, B115200);
 cfsetispeed 只是修改 struct termios 中保存的配置。
 
 通常还需要调用 tcsetattr，才会把配置真正设置到串口设备。
+
+## 7.9 I2C
+
+**测光强、距离、红外:**
+[[AP3216C.pdf#page=10]]
+**I2C读写eeprom的原理图与芯片手册**
+[[i2c_eeprom_module_v1.0.pdf]]
+[[AT24cxx.pdf]]
+### 7.9.1 宏
+#### I2C设备相关宏
+
+```c
+#include <linux/i2c.h>
+#include <linux/i2c-dev.h>
+
+#define I2C_M_RD          0x0001  /* i2c_msg 为读操作，不设置则表示写操作 */
+
+#define I2C_SLAVE         0x0703  /* 设置当前要访问的 I2C 从设备地址 */
+
+#define I2C_SLAVE_FORCE   0x0706  /* 强制设置从设备地址，即使该设备已被内核驱动占用 */
+
+#define I2C_RDWR          0x0707  /* 使用多个 i2c_msg 完成组合 I2C 读写传输 */
+
+#define I2C_SMBUS         0x0720  /* 执行 SMBus 传输 */
+```
+
+**用法示例：**
+**I2C_M_RD** 用在 i2c_msg.flags 中：
+
+```c
+struct i2c_msg msg;
+
+msg.flags = 0;          /* 写 */
+msg.flags = I2C_M_RD;   /* 读 */
+```
+
+**I2C_SLAVE** 通常和 ioctl() 配合，用来指定后续要访问的从设备：
+
+```c
+int fd;
+
+fd = open("/dev/i2c-0", O_RDWR);
+
+ioctl(fd, I2C_SLAVE, 0x50);
+```
+
+表示：
+
+```text
+使用 /dev/i2c-0
+        ↓
+访问设备地址 0x50
+```
+
+如果设备地址已经被某个内核驱动占用：
+
+```c
+ioctl(fd, I2C_SLAVE, 0x50);
+```
+
+可能失败。
+
+**I2C_SLAVE_FORCE** 可以强制访问：
+
+```c
+ioctl(fd, I2C_SLAVE_FORCE, 0x50);
+```
+
+一般不建议随意使用，因为可能和已有内核驱动同时访问同一个设备。
+
+I2C_RDWR 用于普通 I2C 的组合传输：
+
+```c
+struct i2c_rdwr_ioctl_data rdwr;
+
+ioctl(fd, I2C_RDWR, &rdwr);
+```
+
+可以实现：
+
+```text
+写 i2c_msg
+    ↓
+Repeated START
+    ↓
+读 i2c_msg
+    ↓
+STOP
+```
+
+**I2C_SMBUS** 用于 SMBus 方式传输：
+
+```c
+struct i2c_smbus_ioctl_data args;
+
+ioctl(fd, I2C_SMBUS, &args);
+```
+
+实际编写用户程序时，一般优先使用 libi2c 提供的 i2c_smbus_() 函数，而不是自己直接构造 I2C_SMBUS ioctl 参数。
+
+### 7.9.2 数据类型
+#### i2c_adapter
+
+i2c_adapter 用来表示一个 I2C BUS，也就是一个 I2C Controller。
+
+一个芯片中可能有多个 I2C Controller，每个控制器对应一个 i2c_adapter。
+
+```c
+#include <linux/i2c.h>
+
+struct i2c_adapter {
+    struct module *owner;                       /* 拥有该 I2C Adapter 的内核模块 */
+    unsigned int class;                         /* Adapter 的设备类别，用于设备探测 */
+    const struct i2c_algorithm *algo;           /* I2C 数据传输算法 */
+    void *algo_data;                            /* 传输算法使用的私有数据 */
+
+    const struct i2c_lock_operations *lock_ops; /* I2C 总线的加锁、解锁操作 */
+    struct rt_mutex bus_lock;                   /* I2C 总线互斥锁 */
+    struct rt_mutex mux_lock;                   /* I2C 多路复用相关互斥锁 */
+    int timeout;                                /* I2C 传输超时时间 */
+    int retries;                                /* I2C 传输失败时的重试次数 */
+    struct device dev;                          /* Linux 设备模型中的 device 对象 */
+
+    int nr;                                     /* 第几个 I2C BUS / I2C Controller */
+    char name[48];                              /* I2C Adapter 的名称 */
+    struct completion dev_released;             /* 用于等待 Adapter 对应设备被释放 */
+
+    struct mutex userspace_clients_lock;        /* 保护 userspace_clients 链表 */
+    struct list_head userspace_clients;         /* 用户空间创建的 I2C Client 链表 */
+
+    struct i2c_bus_recovery_info *bus_recovery_info; /* I2C 总线恢复相关信息 */
+    const struct i2c_adapter_quirks *quirks;    /* I2C Controller 的特殊限制 */
+};
+```
+
+当前阶段重点记住：
+
+- nr：表示这是第几个 I2C Controller。
+    
+- algo：指向 i2c_algorithm，表示这个 I2C Controller 怎么传输数据。
+    
+
+可以简单理解为：**i2c_adapter 表示一个 I2C Controller。**
+
+代码示例：
+
+```c
+struct i2c_adapter *adapter;
+
+/* 获取编号为 0 的 I2C Adapter */
+adapter = i2c_get_adapter(0);
+
+if (adapter) {
+    /* adapter->nr 为该 I2C Adapter 的编号 */
+    printk("I2C adapter nr = %d\n", adapter->nr);
+
+    /* 使用完成后释放 */
+    i2c_put_adapter(adapter);
+}
+```
+
+这里的 `0` 表示获取第 0 个 I2C BUS / I2C Controller。
+#### i2c_algorithm
+
+i2c_algorithm 用来描述 I2C Controller 的数据传输方法。
+
+i2c_adapter 中的 algo 成员指向 i2c_algorithm，通过其中的函数完成普通 I2C 或 SMBus 数据传输。
+
+```c
+#include <linux/i2c.h>
+
+struct i2c_algorithm {
+    int (*master_xfer)(struct i2c_adapter *adap,
+                       struct i2c_msg *msgs,
+                       int num);                /* 使用普通 I2C 方式传输 i2c_msg */
+
+    int (*smbus_xfer)(struct i2c_adapter *adap,
+                      u16 addr,
+                      unsigned short flags,
+                      char read_write,
+                      u8 command,
+                      int size,
+                      union i2c_smbus_data *data); /* 使用 SMBus 方式传输数据 */
+
+    u32 (*functionality)(struct i2c_adapter *); /* 返回 Adapter 支持的 I2C/SMBus 功能 */
+
+#if IS_ENABLED(CONFIG_I2C_SLAVE)
+    int (*reg_slave)(struct i2c_client *client);   /* 注册 I2C 从机 */
+    int (*unreg_slave)(struct i2c_client *client); /* 注销 I2C 从机 */
+#endif
+};
+```
+
+master_xfer 中：
+
+- adap：要使用的 I2C Controller。
+    
+- msgs：要传输的 i2c_msg 数组。
+    
+- num：要传输的 i2c_msg 数量。
+    
+
+smbus_xfer 用来进行 SMBus 数据传输。
+
+可以简单理解为：**i2c_algorithm 表示 I2C Controller 怎么传输数据。**
+
+代码示例：
+
+```c
+static int my_i2c_xfer(struct i2c_adapter *adap,
+                       struct i2c_msg *msgs,
+                       int num)
+{
+    /* 根据 msgs 中的内容进行 I2C 数据传输 */
+
+    return num;
+}
+
+static u32 my_i2c_func(struct i2c_adapter *adap)
+{
+    return I2C_FUNC_I2C;
+}
+
+static const struct i2c_algorithm my_i2c_algo = {
+    .master_xfer  = my_i2c_xfer,
+    .functionality = my_i2c_func,
+};
+```
+
+这里把：
+
+```c
+my_i2c_xfer
+```
+
+赋给 master_xfer，表示这个 I2C Controller 使用 my_i2c_xfer 完成普通 I2C 数据传输。
+
+#### i2c_client
+
+i2c_client 用来表示连接在 I2C 总线上的一个 I2C Device。
+
+一个 I2C Device 最重要的信息是设备地址，以及它连接在哪一个 I2C Controller 上。
+
+```c
+#include <linux/i2c.h>
+
+struct i2c_client {
+    unsigned short flags;          /* I2C Device 的相关标志 */
+    unsigned short addr;           /* I2C 设备地址 */
+    char name[I2C_NAME_SIZE];      /* I2C Device 的名称 */
+    struct i2c_adapter *adapter;    /* 设备所连接的 I2C Adapter */
+    struct device dev;             /* Linux 设备模型中的 device 对象 */
+    int irq;                       /* 设备使用的中断号 */
+    struct list_head detected;     /* 用于连接已探测到的 I2C Device */
+
+#if IS_ENABLED(CONFIG_I2C_SLAVE)
+    i2c_slave_cb_t slave_cb;       /* I2C 从机模式下的回调函数 */
+#endif
+};
+```
+
+当前阶段重点记住：
+
+- addr：表示这个 I2C Device 的设备地址。
+    
+- adapter：表示这个设备连接在哪一个 I2C Controller 上。
+    
+
+例如设备地址为 0x50：
+
+```text
+i2c_client
+    │
+    ├── addr = 0x50
+    │
+    └── adapter ──→ 对应的 i2c_adapter
+```
+
+可以简单理解为：**i2c_client 表示一个 I2C Device。**
+
+代码示例：
+
+```c
+struct i2c_client *client;
+
+/* 假设 client 已经指向某个 I2C 设备 */
+
+printk("device address = 0x%x\n", client->addr);
+printk("I2C bus = %d\n", client->adapter->nr);
+```
+
+例如：
+
+```c
+client->addr = 0x50;
+```
+
+表示该 i2c_client 对应设备地址为 0x50 的 I2C Device。
+
+而：
+
+```c
+client->adapter
+```
+
+则可以找到该设备所在的 I2C Adapter。
+#### i2c_msg
+
+i2c_msg 用来描述一次 I2C 数据传输，也就是告诉 I2C Controller：
+
+- 要访问哪个 I2C 设备
+    
+- 本次是读还是写
+    
+- 要传输多少字节
+    
+- 数据保存在哪里
+    
+
+一个 i2c_msg **要么表示一次读操作，要么表示一次写操作**。
+
+```c
+#include <linux/i2c.h>
+
+struct i2c_msg {
+    __u16 addr;     /* I2C 设备地址 */
+
+    __u16 flags;    /* 传输标志，主要用于指定读写方向 */
+
+#define I2C_M_RD            0x0001  /* 读操作 */
+#define I2C_M_TEN           0x0010  /* 使用 10 位设备地址 */
+#define I2C_M_RECV_LEN      0x0400  /* 接收长度由从机返回的数据决定 */
+#define I2C_M_NO_RD_ACK     0x0800  /* 读操作时不产生正常的 ACK */
+#define I2C_M_IGNORE_NAK    0x1000  /* 忽略 NACK */
+#define I2C_M_REV_DIR_ADDR  0x2000  /* 反转地址中的读写方向位 */
+#define I2C_M_NOSTART       0x4000  /* 本次传输前不产生 START */
+#define I2C_M_STOP          0x8000  /* 本次消息结束后产生 STOP */
+
+    __u16 len;      /* 要发送或接收的数据字节数 */
+    __u8 *buf;      /* 指向发送数据或接收数据的缓冲区 */
+};
+```
+
+其中当前阶段最重要的是：
+
+- addr：指定要访问的 I2C Device 地址。
+    
+- flags：指定本次传输是读还是写。
+    
+- len：指定要传输多少个字节。
+    
+- buf：指向实际的数据缓冲区。
+    
+
+flags 中最常用的是 I2C_M_RD：
+
+```c
+msg.flags = 0;          /* 写操作 */
+
+msg.flags = I2C_M_RD;   /* 读操作 */
+```
+
+也就是：
+
+```text
+flags 的 bit0 = 0
+        ↓
+       写
+
+flags 的 bit0 = I2C_M_RD
+        ↓
+       读
+```
+
+例如，要读取设备地址为 0x50 的 EEPROM 中存储地址 0x10 处的 1 个字节，需要构造两个 i2c_msg：
+
+```c
+u8 data_addr = 0x10;
+i8 data;
+struct i2c_msg msgs[2];
+
+/* 第 1 个 i2c_msg：写入要访问的 EEPROM 存储地址 0x10 */
+msgs[0].addr  = 0x50;          /* EEPROM 的设备地址 */
+msgs[0].flags = 0;             /* 写操作 */
+msgs[0].len   = 1;             /* 写 1 个字节 */
+msgs[0].buf   = &data_addr;    /* 要发送的数据：0x10 */
+
+/* 第 2 个 i2c_msg：从 EEPROM 读取 1 个字节 */
+msgs[1].addr  = 0x50;          /* EEPROM 的设备地址 */
+msgs[1].flags = I2C_M_RD;      /* 读操作 */
+msgs[1].len   = 1;             /* 读 1 个字节 */
+msgs[1].buf   = &data;         /* 读取到的数据保存到 data */
+```
+
+对应的传输过程可以理解为：
+
+```text
+msgs[0]：写
+
+设备 0x50
+   ↓
+发送 0x10
+   ↓
+告诉 EEPROM：我要访问存储地址 0x10
+
+
+msgs[1]：读
+
+设备 0x50
+   ↓
+读取 1 Byte
+   ↓
+保存到 data
+```
+
+之所以需要两个 i2c_msg，是因为：
+
+```text
+第一个 i2c_msg
+    ↓
+写操作：发送存储地址 0x10
+
+第二个 i2c_msg
+    ↓
+读操作：读取该地址中的数据
+```
+
+一个 i2c_msg 只能表示一个方向的传输，因此这种“先写地址、再读数据”的操作需要两个 i2c_msg。
+
+可以简单理解为：
+
+```text
+i2c_msg
+   │
+   ├── addr   → 和哪个 I2C Device 通信
+   ├── flags  → 读还是写
+   ├── len    → 传多少字节
+   └── buf    → 数据放在哪里
+```
+
+i2c_msg 主要表示：**一次具体的 I2C 读或写传输。**
+
+#### i2c_rdwr_ioctl_data
+
+i2c_rdwr_ioctl_data 用于在用户空间通过 ioctl + I2C_RDWR 进行普通 I2C 传输。
+
+它本身不保存具体的数据，而是保存：
+
+- 要传输的 i2c_msg 数组
+    
+- i2c_msg 的数量
+    
+
+课程中的普通 I2C 访问流程就是先构造一个或多个 i2c_msg，再通过 i2c_rdwr_ioctl_data 交给 ioctl(file, I2C_RDWR, &rdwr) 执行。
+
+```c
+#include <linux/i2c.h>
+#include <linux/i2c-dev.h>
+
+struct i2c_rdwr_ioctl_data {
+    struct i2c_msg *msgs;    /* 指向要传输的 i2c_msg 数组 */
+    __u32 nmsgs;             /* i2c_msg 的数量 */
+};
+```
+
+其中：
+
+```text
+msgs
+↓
+指向一个或多个 i2c_msg
+
+nmsgs
+↓
+表示 msgs 数组中有多少个 i2c_msg
+```
+
+例如：
+
+```c
+struct i2c_msg msgs[2];
+struct i2c_rdwr_ioctl_data rdwr;
+
+rdwr.msgs  = msgs;
+rdwr.nmsgs = 2;
+```
+
+表示：
+
+```text
+rdwr
+ │
+ ├── msgs  ──→ msgs[0]
+ │             msgs[1]
+ │
+ └── nmsgs = 2
+```
+
+构造完成后通常配合 I2C_RDWR 使用：
+
+```c
+ioctl(fd, I2C_RDWR, &rdwr);
+```
+
+例如读取设备地址为 0x50 的 EEPROM 中地址 0x10 处的 1 个字节：
+
+```c
+#include <linux/i2c.h>
+#include <linux/i2c-dev.h>
+#include <sys/ioctl.h>
+
+unsigned char data_addr = 0x10;
+unsigned char data;
+
+struct i2c_msg msgs[2];
+struct i2c_rdwr_ioctl_data rdwr;
+
+/* 第 1 个 message：写入要访问的 EEPROM 存储地址 */
+msgs[0].addr  = 0x50;
+msgs[0].flags = 0;
+msgs[0].len   = 1;
+msgs[0].buf   = &data_addr;
+
+/* 第 2 个 message：读取该地址中的 1 个字节 */
+msgs[1].addr  = 0x50;
+msgs[1].flags = I2C_M_RD;
+msgs[1].len   = 1;
+msgs[1].buf   = &data;
+
+/* 把两个 i2c_msg 交给 i2c_rdwr_ioctl_data */
+rdwr.msgs  = msgs;
+rdwr.nmsgs = 2;
+
+/* 执行这组 I2C 传输 */
+ioctl(fd, I2C_RDWR, &rdwr);
+```
+
+对应关系：
+
+```text
+i2c_rdwr_ioctl_data
+        │
+        ├── msgs
+        │     │
+        │     ├── msgs[0] → 写：发送地址 0x10
+        │     │
+        │     └── msgs[1] → 读：读取 1 字节
+        │
+        └── nmsgs = 2
+```
+
+可以简单理解为：
+
+```text
+i2c_msg
+↓
+描述“一次读或一次写”
+
+i2c_rdwr_ioctl_data
+↓
+把一个或多个 i2c_msg 组织起来
+
+ioctl + I2C_RDWR
+↓
+执行整组 I2C 传输
+```
+### 7.9.3 函数
+#### i2c_transfer
+
+```c
+/**
+ * @brief  通过指定的 I2C Adapter 传输一个或多个 i2c_msg。
+ *
+ * @param  adap: 指向要使用的 i2c_adapter，即指定 I2C Bus。
+ *
+ * @param  msgs: 指向要传输的 i2c_msg 数组。
+ *
+ * @param  num: i2c_msg 的数量。
+ *
+ * @retval 正数: 成功执行的 i2c_msg 数量。
+ *
+ * @retval 负数: 传输失败，返回负的错误码。
+ */
+#include <linux/i2c.h>
+
+int i2c_transfer(struct i2c_adapter *adap,
+                 struct i2c_msg *msgs,
+                 int num);
+```
+
+i2c_transfer 是 Linux **内核中的 I2C 函数**，主要供 I2C 驱动代码使用，普通用户空间 APP 不能直接调用它。
+
+多个 i2c_msg 会作为一次组合传输执行，中间通常使用 Repeated START，最后才产生 STOP。
+
+**用法示例：**
+例如从地址为 0x50 的 EEPROM 中读取存储地址 0x10 的 1 个字节：
+
+```c
+u8 data_addr = 0x10;
+u8 data;
+
+struct i2c_msg msgs[2];
+
+msgs[0].addr  = 0x50;
+msgs[0].flags = 0;
+msgs[0].len   = 1;
+msgs[0].buf   = &data_addr;
+
+msgs[1].addr  = 0x50;
+msgs[1].flags = I2C_M_RD;
+msgs[1].len   = 1;
+msgs[1].buf   = &data;
+
+ret = i2c_transfer(adapter, msgs, 2);
+```
+
+对应：
+
+```text
+msgs[0]
+写 0x10
+   ↓
+告诉 EEPROM 要访问哪个存储地址
+
+Repeated START
+
+msgs[1]
+读取 1 Byte
+   ↓
+保存到 data
+```
+
+成功时：
+
+```c
+ret == 2
+```
+
+表示两个 i2c_msg 都执行成功。
+### 7.9.4 I2C 编程流程
+
+
+# 8 第三方库与组件
+
+## 8.1 FreeType 字体库
+
+### 数据类型表
+
+| 类型           | 代码中的变量 | 作用                                         |
+| -------------- | ------------ | -------------------------------------------- |
+| `FT_Library`   | `library`    | FreeType 字体库对象                          |
+| `FT_Face`      | `face`       | 字体对象，表示打开的字体文件及其中的某个字体 |
+| `FT_GlyphSlot` | `slot`       | 字形槽，用来保存当前加载的字形               |
+| `FT_Vector`    | `pen`        | 二维向量，本代码准备作为字形平移量           |
+| `FT_Bitmap`    | `bitmap`     | 字形渲染后生成的位图                         |
+| `FT_Int`       | `i、j、p、q` | FreeType 定义的整数类型                      |
+
+```
+说明：
+FT_Face 内部自带一个字形槽，可以通过 face->glyph 访问。
+
+每次加载新字符时，字形槽中原来的内容会被新字符覆盖。
+```
+
+### 函数表
+
+| 函数                 | 代码中的调用                                         | 作用                                             |
+| -------------------- | ---------------------------------------------------- | ------------------------------------------------ |
+| `FT_Init_FreeType`   | `FT_Init_FreeType(&library)`                         | 初始化 FreeType 字体库，得到字体库对象 `library` |
+| `FT_New_Face`        | `FT_New_Face(library, argv[1], 0, &face)`            | 打开字体文件，创建字体对象 `face`                |
+| `FT_Set_Pixel_Sizes` | `FT_Set_Pixel_Sizes(face, font_size, 0)`             | 设置后续加载字形时使用的字体像素大小             |
+| `FT_Set_Transform`   | `FT_Set_Transform(face, 0, &pen)`                    | 设置字形的旋转、缩放或平移；当前代码中被注释     |
+| `FT_Load_Char`       | `FT_Load_Char(face, chinese_str[0], FT_LOAD_RENDER)` | 加载指定字符，并将字形渲染成位图                 |
+
+```text
+说明：
+
+FT_Init_FreeType：
+必须先调用，用来初始化 FreeType 字体库。
+
+FT_New_Face：
+在字体库初始化后调用，用来打开指定字体文件。
+
+FT_Set_Pixel_Sizes：
+在加载字符前调用，用来设置字体显示大小。
+
+FT_Set_Transform：
+在加载字符前调用，用来设置字形变换。
+当前代码中没有实际执行。
+
+FT_Load_Char：
+加载并渲染指定字符。
+渲染结果保存在 face->glyph 中，
+生成的位图可以通过 face->glyph->bitmap 访问。
+```
+
+### 各数据类型之间的关系
+
+```
+FT_Library : FreeType 字体库对象
+    │
+    │ 通过 FT_New_Face() 创建字体对象
+    ▼
+FT_Face : 字体对象，表示打开的字体文件中的一个字体
+    │
+    │ 通过 face->glyph 获取字形槽
+    ▼
+FT_GlyphSlot : 字形槽，保存当前加载字符的字形信息
+    │
+    │ 使用 FT_Load_Char(..., FT_LOAD_RENDER) 渲染字形
+    │
+    │ 通过 slot->bitmap 获取位图
+    ▼
+FT_Bitmap : 字形渲染后的像素位图
+    │
+    │ bitmap->width   位图宽度
+    │ bitmap->rows    位图高度
+    │ bitmap->buffer  位图像素数据
+    ▼
+draw_bitmap() : 用户自己编写的函数，遍历位图数据并绘制到 LCD
+
+
+FT_Vector : 独立的二维向量类型
+    │
+    ├── pen.x：水平方向平移量
+    └── pen.y：垂直方向平移量
+    │
+    └── 可作为 FT_Set_Transform() 的平移参数
+
+
+FT_Int : FreeType 定义的整数类型
+    │
+    └── 用于坐标、循环变量、宽度和高度等普通整数数据
+```
+
+### 数据类型
+
+#### face->glyph->bitmap
+
+```
+FT_Face 	  face;
+FT_GlyphSlot  slot;
+	
+slot = face->glyph;
+作用：取得 face 自带的字形槽，并让 slot 指向这个字形槽。
+
+FT_GlyphSlot slot;
+说明：字形槽用于保存当前加载字符的：字形图像,字形位图,字形尺寸,字形位置等信息
+
+每次调用 FT_Load_Char 加载新字符后：slot 中原来的字形数据会被新字符的数据覆盖。
+```
+
+`FT_Bitmap` 在代码中使用的成员：
+
+| 成员             | 作用                     |
+| ---------------- | ------------------------ |
+| `bitmap->width`  | 位图宽度，单位是像素     |
+| `bitmap->rows`   | 位图高度，单位是像素行   |
+| `bitmap->buffer` | 保存位图像素数据的缓冲区 |
+
+#### FT_Library
+
+```c
+/**
+ * @brief  FreeType 字体库对象。
+ *
+ *         FT_Library 是 FreeType 中最上层的对象，
+ *         用来管理字体对象、字形对象、内存管理器等资源。
+ *
+ * 常用成员：
+ *         FT_Library 是不透明指针类型，
+ *         内部成员不对应用程序公开，不能直接访问。
+ *
+ * 创建方式：
+ *         使用 FT_Init_FreeType() 创建。
+ *
+ * 代码中的变量：
+ *         FT_Library library;
+ *
+ * 与其他类型的关系：
+ *         FT_Library 可以用来创建一个或多个 FT_Face 字体对象。
+ */
+#include <ft2build.h>
+
+typedef struct FT_LibraryRec_ *FT_Library;
+```
+
+代码中的使用：
+
+```c
+FT_Library library;
+
+error = FT_Init_FreeType(&library);
+```
+
+```text
+说明：
+
+library：
+保存初始化后的 FreeType 字体库对象。
+
+后续调用 FT_New_Face 时，
+需要把 library 作为参数传入。
+```
+
+---
+
+#### FT_Face
+
+```c
+/**
+ * @brief  字体对象。
+ *
+ *         FT_Face 表示字体文件中的一个字体及其样式。
+ *         一个字体文件中可能包含一个或多个 FT_Face。
+ *
+ * 创建方式：
+ *         使用 FT_New_Face() 创建。
+ *
+ * 代码中的变量：
+ *         FT_Face face;
+ *
+ * 与其他类型的关系：
+ *         FT_Face 由 FT_Library 创建。
+ *         FT_Face 内部拥有一个 FT_GlyphSlot。
+ */
+#include <ft2build.h>
+
+typedef struct FT_FaceRec_ *FT_Face;
+```
+
+代码中的使用：
+
+```c
+FT_Face face;
+
+error = FT_New_Face(library, argv[1], 0, &face);
+```
+
+访问字形槽：
+
+```c
+slot = face->glyph;
+```
+
+```text
+说明：
+
+face：
+表示 argv[1] 指定字体文件中的第一个字体对象。
+
+face->glyph：
+取得 face 内部自带的字形槽。
+```
+
+---
+
+#### FT_GlyphSlot
+
+```c
+/**
+ * @brief  字形槽。
+ *
+ *         FT_GlyphSlot 用来保存当前加载字符的字形数据。
+ *
+ *         每次调用 FT_Load_Char() 或 FT_Load_Glyph() 时，
+ *         字形槽中原来的内容都会被新字形覆盖。
+ *
+ * 获取方式：
+ *         通过 face->glyph 获取。
+ *
+ * 代码中的变量：
+ *         FT_GlyphSlot slot;
+ *
+ * 与其他类型的关系：
+ *         FT_GlyphSlot 属于 FT_Face。
+ *         FT_GlyphSlot 内部包含 FT_Bitmap。
+ */
+typedef struct FT_GlyphSlotRec_ *FT_GlyphSlot;
+```
+
+代码中的使用：
+
+```c
+FT_GlyphSlot slot;
+
+slot = face->glyph;
+```
+
+加载字符：
+
+```c
+error = FT_Load_Char(face,
+                     chinese_str[0],
+                     FT_LOAD_RENDER);
+```
+
+取得字形位图：
+
+```c
+slot->bitmap
+```
+
+```text
+说明：
+
+使用 FT_LOAD_RENDER 加载字符后，
+渲染生成的位图会保存在 slot->bitmap 中。
+
+slot 由 face 管理，
+不需要应用程序单独创建或释放。
+```
+
+---
+
+#### FT_Vector
+
+```c
+/**
+ * @brief  二维向量。
+ *
+ *         FT_Vector 用来保存二维坐标、移动距离或平移量。
+ *
+ * 常用成员：
+ *
+ *         x	：水平方向的坐标或移动量。
+ *
+ *         y	：垂直方向的坐标或移动量。
+ *
+ * 代码中的变量：
+ *         FT_Vector pen;
+ *
+ * 代码中的用途：
+ *         准备用作 FT_Set_Transform() 的平移参数。
+ */
+#include <ft2build.h>
+
+typedef struct FT_Vector_
+{
+    FT_Pos x;
+    FT_Pos y;
+
+} FT_Vector;
+```
+
+代码中的使用目前被注释：
+
+```c
+FT_Vector pen;
+
+//pen.x = 0;
+//pen.y = 0;
+
+//FT_Set_Transform(face, 0, &pen);
+```
+
+```text
+说明：
+
+pen.x：
+字形在水平方向上的平移量。
+
+pen.y：
+字形在垂直方向上的平移量。
+
+当 FT_Vector 用作 FT_Set_Transform 的平移参数时，
+x 和 y 通常使用 26.6 定点格式。
+
+也就是：
+64 表示移动 1 个像素。
+32 表示移动 1/2 个像素。
+```
+
+---
+
+#### FT_Bitmap
+
+```c
+/**
+ * @brief  字形位图。
+ *
+ *         FT_Bitmap 用来保存字形渲染后得到的像素数据。
+ *
+ * 常用成员：
+ *
+ *         rows
+ *              位图的行数，也就是位图高度。
+ *
+ *         width
+ *              位图每行的像素数量，也就是位图宽度。
+ *
+ *         pitch
+ *              位图每行数据实际占用的字节数。
+ *
+ *         buffer
+ *              指向位图像素数据缓冲区。
+ *
+ *         num_grays
+ *              灰度级数量。
+ *
+ *         pixel_mode
+ *              位图像素格式。
+ *              例如单色位图、灰度位图或 BGRA 位图。
+ *
+ *         palette_mode
+ *              调色板模式，通常不使用。
+ *
+ *         palette
+ *              调色板地址，通常不使用。
+ *
+ * 代码中的用途：
+ *         接收 FT_Load_Char() 渲染后生成的字形位图。
+ *
+ * 与其他类型的关系：
+ *         FT_Bitmap 是 FT_GlyphSlot 中的成员。
+ *         可以通过 slot->bitmap 访问。
+ */
+#include <ft2build.h>
+
+typedef struct FT_Bitmap_
+{
+    unsigned int   rows;
+    unsigned int   width;
+    int            pitch;
+    unsigned char *buffer;
+    unsigned short num_grays;
+    unsigned char  pixel_mode;
+    unsigned char  palette_mode;
+    void          *palette;
+
+} FT_Bitmap;
+```
+
+代码中的使用：
+
+```c
+void draw_bitmap(FT_Bitmap *bitmap,
+                 FT_Int x,
+                 FT_Int y);
+```
+
+取得位图宽度和高度：
+
+```c
+FT_Int x_max = x + bitmap->width;
+FT_Int y_max = y + bitmap->rows;
+```
+
+读取像素数据：
+
+```c
+bitmap->buffer[q * bitmap->width + p]
+```
+
+```text
+说明：
+
+bitmap->width：
+字形位图宽度。
+
+bitmap->rows：
+字形位图高度。
+
+bitmap->buffer：
+保存字形每个像素的灰度值。
+
+bitmap->pitch：
+位图一行实际占用的字节数。
+在通用代码中，计算每行地址时应考虑 pitch。
+
+当前代码使用：
+q * bitmap->width + p
+
+这相当于假设：
+每个像素占 1 字节，
+并且 pitch 等于 width。
+```
+
+#### FT_Matrix
+
+`FT_Matrix` 是 FreeType 中的二维变换矩阵，用来对字形进行旋转、缩放、倾斜或镜像。
+
+```
+#include <ft2build.h>
+
+typedef struct FT_Matrix_
+{
+    FT_Fixed xx;
+    FT_Fixed xy;
+    FT_Fixed yx;
+    FT_Fixed yy;
+} FT_Matrix;
+```
+
+矩阵形式：
+
+```
+┌         ┐
+│ xx   xy │
+│ yx   yy │
+└         ┘
+```
+
+代码中的旋转矩阵：
+
+```
+matrix.xx = (FT_Fixed)( cos(angle) * 0x10000L);
+matrix.xy = (FT_Fixed)(-sin(angle) * 0x10000L);
+matrix.yx = (FT_Fixed)( sin(angle) * 0x10000L);
+matrix.yy = (FT_Fixed)( cos(angle) * 0x10000L);
+```
+
+作用：把字形旋转 `angle` 对应的角度。
+
+`FT_Fixed` 是 16.16 定点数：
+
+```
+1.0 = 0x10000
+0.5 = 0x08000
+2.0 = 0x20000
+```
+
+#### FT_BBox
+
+`FT_BBox` 用来保存一个图形或字形的边界框，也就是能够包住该图形的最小矩形。
+
+数据结构
+
+```c
+#include <ft2build.h>
+
+typedef struct FT_BBox_
+{
+    FT_Pos xMin;
+    FT_Pos yMin;
+    FT_Pos xMax;
+    FT_Pos yMax;
+} FT_BBox;
+```
+
+成员说明
+
+| 成员   | 说明                  |
+| ------ | --------------------- |
+| `xMin` | 边界框最左侧的 x 坐标 |
+| `yMin` | 边界框最下方的 y 坐标 |
+| `xMax` | 边界框最右侧的 x 坐标 |
+| `yMax` | 边界框最上方的 y 坐标 |
+
+```text
+左下角坐标：(xMin, yMin)
+右上角坐标：(xMax, yMax)
+```
+
+### 函数
+
+#### FT_Init_FreeType
+
+```
+/**
+ * @brief  初始化 FreeType 字体库。
+ *
+ * @param  alibrary：用于保存初始化后得到的 FreeType 字体库对象。
+ *
+ * @retval 0：初始化成功。
+ * @retval 非0：初始化失败，返回 FreeType 错误码。
+ */
+FT_Error FT_Init_FreeType(FT_Library *alibrary);
+```
+
+#### FT_New_Face
+
+```
+/**
+ * @brief  从指定字体文件中创建字体对象。
+ *
+ * @param  library：已经初始化的 FreeType 字体库对象。
+ *
+ * @param  filepathname：字体文件路径。
+ *
+ * @param  face_index：字体文件中的字体索引。
+ *         0 表示使用第一个字体对象。
+ *
+ * @param  aface：用于保存创建后的 FT_Face 字体对象。
+ *
+ * @retval 0：创建成功。
+ * @retval 非0：创建失败，返回 FreeType 错误码。
+ */
+#include <ft2build.h>
+ 
+FT_Error FT_New_Face(FT_Library library,
+                     const char *filepathname,
+                     FT_Long face_index,
+                     FT_Face *aface);
+```
+
+运行示例：
+
+```
+./程序名 font.ttf
+说明：
+argv[1] 就是 font.ttf。
+```
+
+#### FT_Set_Pixel_Sizes
+
+```
+/**
+ * @brief  设置字体的像素大小。
+ *
+ * @param  face：要设置的字体对象。
+ *
+ * @param  pixel_width：字体的名义像素宽度。
+ *
+ * @param  pixel_height：字体的名义像素高度。
+ *
+ * @retval 0：设置成功。
+ * @retval 非0：设置失败，返回 FreeType 错误码。
+ */
+FT_Error FT_Set_Pixel_Sizes(FT_Face face,
+                            FT_UInt pixel_width,
+                            FT_UInt pixel_height);
+```
+
+代码中的使用：
+
+```
+int font_size = 24;
+
+FT_Set_Pixel_Sizes(face, font_size, 0);
+参数说明：
+
+face：
+FT_New_Face 创建的字体对象。
+
+font_size：
+字体的像素宽度。
+默认值为 24，也可以由 argv[2] 指定。
+
+0：
+像素高度设置为 0，
+表示高度根据宽度自动确定。
+```
+
+运行示例：
+
+```
+./程序名 font.ttf 32
+说明：
+
+argv[1] 是字体文件路径。
+argv[2] 是字体像素大小。
+
+此时：
+font_size = 32
+注意：
+FT_Set_Pixel_Sizes 设置的是字体的名义像素尺寸。
+
+实际生成的单个字形位图，
+不一定正好等于设置的宽度和高度。
+```
+
+#### FT_Set_Transform
+
+```
+/**
+ * @brief  设置加载字形时使用的变换矩阵和平移量。
+ *
+ * @param  face：要设置的字体对象。
+ *
+ * @param  matrix：二维变换矩阵。
+ *         NULL 表示不进行旋转、缩放等矩阵变换。
+ *
+ * @param  delta：平移向量。
+ *         NULL 表示不进行平移。
+ *
+ * @retval 无。
+ */
+#include <ft2build.h>
+ 
+void FT_Set_Transform(FT_Face face,
+                      FT_Matrix *matrix,
+                      FT_Vector *delta);
+```
+
+代码中的使用
+
+```
+FT_Vector pen;
+
+pen.x = 0;
+pen.y = 0;
+
+FT_Set_Transform(face, &matrix, &pen);
+
+含义：
+
+- 使用 matrix 旋转字形；
+- pen.x 和 pen.y`都为 0，因此不进行平移。
+
+FT_Set_Transform() 只是保存变换规则，真正的变换发生在后面加载字形时：
+
+FT_Set_Transform(face, &matrix, &pen);
+
+FT_Load_Char(face,
+             chinese_str[0],
+             FT_LOAD_RENDER);
+```
+
+执行过程：
+
+```
+设置旋转矩阵
+    ↓
+FT_Set_Transform() 保存变换规则
+    ↓
+FT_Load_Char() 加载字形
+    ↓
+旋转字形轮廓
+    ↓
+生成旋转后的位图
+```
+
+常见写法
+
+```
+/* 只旋转，不平移 */
+FT_Set_Transform(face, &matrix, NULL);
+
+/* 不旋转，只平移 */
+FT_Set_Transform(face, NULL, &pen);
+
+/* 不进行任何变换 */
+FT_Set_Transform(face, NULL, NULL);
+```
+
+#### FT_Load_Char
+
+```
+/**
+ * @brief  根据字符编码加载字形，并保存到 face 的字形槽中。
+ *
+ * @param  face：字体对象。
+ *
+ * @param  char_code：要加载字符的字符编码。
+ *
+ * @param  load_flags：字形加载方式。
+ *
+ *         @arg FT_LOAD_RENDER
+ *              加载字形后立即把字形渲染成位图。
+ *
+ * @retval 0：加载成功。
+ * @retval 非0：加载失败，返回 FreeType 错误码。
+ */
+#include <ft2build.h>
+ 
+FT_Error FT_Load_Char(FT_Face face,
+                      FT_ULong char_code,
+                      FT_Int32 load_flags);
+```
+
+代码中的使用：
+
+```
+wchar_t *chinese_str = L"繁";
+
+error = FT_Load_Char(face,
+                     chinese_str[0],
+                     FT_LOAD_RENDER);
+参数说明：
+
+face：
+FT_New_Face 创建的字体对象。
+
+chinese_str[0]：
+宽字符字符串中的第一个字符，
+这里表示汉字“繁”的字符编码。
+
+FT_LOAD_RENDER：
+加载字形后立即渲染成位图。
+```
+
+### 代码执行流程
+
+```
+1. FT_Init_FreeType
+   初始化 FreeType 字体库，得到 library。
+
+2. FT_New_Face
+   打开字体文件，得到 face。
+
+3. face->glyph
+   取得 face 自带的字形槽，保存到 slot。
+
+4. FT_Set_Pixel_Sizes
+   设置字体像素大小。
+
+5. FT_Set_Transform
+   设置字形变换和平移。
+   当前代码中被注释，没有实际执行。
+
+6. FT_Load_Char
+   加载“繁”字并渲染成位图。
+
+7. slot->bitmap
+   取得渲染完成的字形位图。
+
+8. draw_bitmap
+   把字形位图逐像素绘制到 LCD。
+简单记忆：
+
+library：
+FreeType 字体库对象。
+
+face：
+从字体文件创建的字体对象。
+
+slot：
+保存当前字形的字形槽。
+
+bitmap：
+字形渲染后得到的像素位图。
+```
+## 8.2 tslib 触摸屏
+### 8.2.1 命令
+
+#### `ts_print`
+
+```
+在终端中持续打印触摸坐标和压力值：
+
+适合检查触摸屏是否能够正常读取数据。
+```
+
+#### `ts_print_raw`
+
+```
+打印未经校准和过滤的原始触摸数据：
+
+适合检查驱动层是否能够产生原始触摸数据。
+```
+
+#### `ts_calibrate`
+
+```text
+执行触摸屏坐标校准：
+校准完成后，通常会把参数保存到：
+/etc/pointercal
+```
+
+#### `ts_test`
+
+```
+运行单点触摸测试程序：
+
+可以通过图形界面测试画线、拖动等触摸操作。
+```
+
+#### `ts_test_mt`
+
+```
+运行多点触摸测试程序：
+
+适合测试支持多点触摸的触摸屏设备。
+```
+
+---
+### 8.2.2 宏
+
+多点触摸（Multi-Touch）绝对事件代码，用于表示触点槽位、位置、压力、接触面积等信息。
+
+```c
+#include <linux/input-event-codes.h>
+
+#define ABS_MT_SLOT         0x2f   /* 当前正在修改的触摸槽位 */
+
+#define ABS_MT_TOUCH_MAJOR  0x30   /* 触摸区域椭圆的主轴大小 */
+#define ABS_MT_TOUCH_MINOR  0x31   /* 触摸区域椭圆的次轴大小，圆形时可省略 */
+
+#define ABS_MT_WIDTH_MAJOR  0x32   /* 接近触摸面的工具区域主轴大小 */
+#define ABS_MT_WIDTH_MINOR  0x33   /* 接近触摸面的工具区域次轴大小 */
+
+#define ABS_MT_ORIENTATION  0x34   /* 触摸椭圆的方向 */
+
+#define ABS_MT_POSITION_X   0x35   /* 触摸点中心的 X 坐标 */
+#define ABS_MT_POSITION_Y   0x36   /* 触摸点中心的 Y 坐标 */
+
+#define ABS_MT_TOOL_TYPE    0x37   /* 触摸工具类型 */
+#define ABS_MT_BLOB_ID      0x38   /* 一组相关触摸数据的编号 */
+#define ABS_MT_TRACKING_ID  0x39   /* 一次触摸接触的唯一跟踪编号 */
+
+#define ABS_MT_PRESSURE     0x3a   /* 触摸压力 */
+#define ABS_MT_DISTANCE     0x3b   /* 触摸工具与表面的悬停距离 */
+
+#define ABS_MT_TOOL_X       0x3c   /* 触摸工具中心的 X 坐标 */
+#define ABS_MT_TOOL_Y       0x3d   /* 触摸工具中心的 Y 坐标 */
+```
+### 8.2.3 数据类型
+
+#### struct tsdev
+
+`struct tsdev` 表示一个由 tslib 管理的触摸屏设备。
+
+它属于**不透明结构体**：`tslib.h` 中只声明了这个结构体，没有公开它的内部成员。因此，应用程序不能直接访问其内部成员，只能通过 `ts_setup()`、`ts_fd()`、`ts_read_mt()`、`ts_close()` 等 tslib 函数操作它。
+
+```c
+/**
+ * @brief tslib 触摸屏设备对象。
+ *
+ * struct tsdev 的内部成员没有在 tslib.h 中公开。
+ * 程序一般只声明 struct tsdev 指针。
+ *
+ * 必需头文件：
+ * #include <tslib.h>
+ */
+
+#include <tslib.h>
+
+/* tslib.h 中的结构体声明 */
+struct tsdev;
+
+/* 常用的变量声明形式 */
+struct tsdev *ts;
+```
+
+代码示例：
+
+```c
+/* ts_setup() 成功后，ts 指向一个 tslib 触摸屏设备对象 */
+struct tsdev *ts = ts_setup(NULL, 0);
+
+if (ts != NULL) {
+    /* 此处可以使用 ts 调用其他 tslib 函数 */
+
+    ts_close(ts);
+}
+```
+
+---
+
+#### struct ts_sample_mt
+
+| 成员            | 在源文件中的作用          |
+| ------------- | ----------------- |
+| `x`           | 保存触点的 X 坐标        |
+| `y`           | 保存触点的 Y 坐标        |
+| `tracking_id` | 源文件通过它判断槽位中是否存在触点 |
+| `valid`       | 判断本次读取是否包含该槽位的新数据 |
+
+```c
+/**
+ * @brief 保存一个多点触摸槽位的采样数据，
+		  例如坐标、压力、槽位编号、触点跟踪编号和数据是否有效。
+ *
+ * 必需头文件：
+ * #include <tslib.h>
+ */
+
+#include <tslib.h>
+
+struct ts_sample_mt {
+    int x;                       /* X 坐标 */
+    int y;                       /* Y 坐标 */
+    unsigned int pressure;       /* 压力值 */
+
+    int slot;                    /* 触摸槽位编号 */
+    int tracking_id;             /* 触点跟踪编号 非0：有触点；0：触点结束/抬起 */
+    int tool_type;               /* 触摸工具类型 */
+
+    int tool_x;                  /* 触摸工具的 X 坐标 */
+    int tool_y;                  /* 触摸工具的 Y 坐标 */
+
+    unsigned int touch_major;    /* 触摸区域主轴大小 */
+    unsigned int width_major;    /* 触摸工具主轴宽度 */
+    unsigned int touch_minor;    /* 触摸区域次轴大小 */
+    unsigned int width_minor;    /* 触摸工具次轴宽度 */
+
+    int orientation;             /* 触摸区域方向 */
+    int distance;                /* 工具与触摸表面的距离 */
+    int blob_id;                 /* 触点集合编号 */
+
+    struct timeval tv;           /* 事件时间 */
+
+    short pen_down;              /* BTN_TOUCH 状态 通常：1按下，0松开 */
+    short valid;                 /* 本次采样是否包含新数据 非0：有新数据；0：本次没更新 */
+};
+```
+
+代码示例：
+
+```c
+/* 定义并初始化一个多点触摸采样数据 */
+struct ts_sample_mt point = {0};
+
+/* 设置当前触点的数据 */
+point.x = 629;
+point.y = 364;
+point.tracking_id = 10;
+point.valid = 1;
+
+/* 数据有效并且当前槽位中存在触点时，读取坐标 */
+if (point.valid && point.tracking_id != -1) {
+    int x = point.x;
+    int y = point.y;
+}
+```
+
+### 8.2.4 函数
+
+#### ts_setup()
+
+```c
+/**
+ * @brief 寻找、打开并配置触摸屏设备。
+ *
+ * @param dev_name 触摸屏设备路径。
+ *                 传入 NULL 时，由 tslib 查找触摸设备。
+ *
+ * @param nonblock 是否使用非阻塞方式。
+ *                 0：阻塞方式。
+ *                 非 0：非阻塞方式。
+ *
+ * @return 成功：返回 struct tsdev 指针。
+ * @return 失败：返回 NULL。
+ *
+ * 必需头文件：
+ * #include <tslib.h>
+ */
+
+#include <tslib.h>
+
+struct tsdev *ts_setup(const char *dev_name, int nonblock);
+```
+
+代码示例：
+
+```c
+/* NULL：由 tslib 查找设备；0：使用阻塞方式 */
+struct tsdev *ts = ts_setup(NULL, 0);
+
+if (ts == NULL) {
+    /* 触摸屏设备打开或配置失败 */
+}
+```
+
+---
+
+#### ts_fd()
+
+```c
+/**
+ * @brief 获取 tslib 当前使用的触摸屏设备文件描述符。
+ *
+ * @param ts 有效的 tslib 触摸屏设备指针。
+ *
+ * @return 返回触摸屏设备的文件描述符。
+ *
+ * 必需头文件：
+ * #include <tslib.h>
+ */
+
+#include <tslib.h>
+
+int ts_fd(struct tsdev *ts);
+```
+
+代码示例：
+
+```c
+/* 必须先获得一个有效的 tslib 设备 */
+struct tsdev *ts = ts_setup(NULL, 0);
+
+if (ts != NULL) {
+    int fd = ts_fd(ts);
+
+    /* 此处可以把 fd 传给 ioctl() 等系统调用 */
+
+    ts_close(ts);
+}
+```
+
+---
+
+#### ts_read_mt()
+
+```c
+/**
+ * @brief 读取经过 tslib 处理的多点触摸数据。
+ *
+ * @param ts    有效的 tslib 触摸屏设备指针。
+ * @param samp  保存读取结果的二维数据空间。
+ * @param slots 每组数据包含的最大触摸槽位数。
+ * @param nr    希望读取的采样组数。
+ *
+ * @return 成功：返回实际读取到的采样组数。
+ * @return 失败：返回负数。
+ *
+ * 必需头文件：
+ * #include <tslib.h>
+ */
+
+#include <tslib.h>
+
+int ts_read_mt(struct tsdev *ts,
+               struct ts_sample_mt **samp,
+               int slots,
+               int nr);
+```
+
+代码示例：
+
+```c
+/************************** 读一组数据 **************************/
+struct ts_sample_mt **samp_mt;
+int max_slots = 5;
+
+samp_mt = malloc(sizeof(*samp_mt));
+samp_mt[0] = calloc(max_slots, sizeof(**samp_mt));
+
+
+if (samp_mt != NULL && samp_mt[0] != NULL) {
+    int ret = ts_read_mt(ts, samp_mt, max_slots, 1);
+}
+
+/************************** 读多组数据 **************************/
+int nr = 2;
+int i;
+
+struct ts_sample_mt **samp_mt;
+
+samp_mt = malloc(nr * sizeof(*samp_mt));
+
+for (i = 0; i < nr; i++) {
+    samp_mt[i] = calloc(max_slots, sizeof(**samp_mt));
+}
+
+if (samp_mt != NULL && samp_mt[0] != NULL) {
+    int ret = ts_read_mt(ts, samp_mt, max_slots, 1);
+}
+```
+
+---
+
+#### ts_close()
+
+```c
+/**
+ * @brief 关闭触摸屏设备并释放相关资源。
+ *
+ * @param ts 有效的 tslib 触摸屏设备指针。
+ *
+ * @return 0：关闭成功。
+ * @return 负数：关闭失败。
+ *
+ * 必需头文件：
+ * #include <tslib.h>
+ */
+
+#include <tslib.h>
+
+int ts_close(struct tsdev *ts);
+```
+
+代码示例：
+
+```c
+/* 必须先打开并配置触摸屏设备 */
+struct tsdev *ts = ts_setup(NULL, 0);
+
+if (ts != NULL) {
+    /* 触摸屏使用完毕后再关闭 */
+    int ret = ts_close(ts);
+
+    if (ret < 0) {
+        /* 关闭触摸屏设备失败 */
+    }
+}
+```
+
+## 8.3 i2c-tools
+
+### 介绍
+
+i2c-tools 是 Linux 用户空间中用于访问和调试 I2C 设备的一套工具，同时也提供 libi2c 编程接口。
+
+它主要包含两类内容：
+
+- 命令行工具：i2cdetect、i2cget、i2cset、i2cdump、i2ctransfer 等。
+    
+- libi2c 编程接口：提供一系列 i2c_smbus_*() 函数，可在应用程序中通过 SMBus 方式访问 I2C 设备。
+    
+
+Linux 中通常通过 `/dev/i2c-0`、`/dev/i2c-1` 等设备节点访问不同的 I2C Bus。
+
+Ubuntu / Debian 可以安装：
+
+```bash
+sudo apt install i2c-tools
+```
+
+查看当前安装的版本：
+
+```bash
+i2cdetect -V
+```
+
+源码版本可以从 i2c-tools 官方源码包获取并自行编译。
+
+### 命令行工具
+#### i2cdetect：I2C 检测
+
+i2cdetect 用于查看系统中的 I2C Bus、查询 I2C Bus 支持的功能以及扫描总线上的 I2C 设备。
+
+|命令|选项|参数|
+|---|---|---|
+|i2cdetect|-l -F -y -a|I2CBUS|
+
+```bash
+-l：列出当前系统中的 I2C Adapter / I2C Bus / I2C Controller
+
+-F：查看指定 I2C Bus 支持的功能
+    I2CBUS 为 0、1、2 等总线编号
+
+-y：执行命令时不再询问确认，直接执行
+
+-a：扫描全部 I2C 地址，包括默认不会扫描的保留地址
+
+扫描结果：
+
+--：该地址没有检测到 I2C 设备
+
+UU：该地址存在 I2C 设备，并且已经被内核驱动占用
+
+数值：
+例如 1e，表示地址 0x1e 上检测到了 I2C 设备，
+但没有被对应的内核设备驱动占用
+
+
+example
+
+# 查看当前系统中有哪些 I2C Bus
+i2cdetect -l
+
+# 查看 I2C Bus 0 支持哪些功能
+i2cdetect -F 0
+
+# 扫描 I2C Bus 0 上有哪些设备
+i2cdetect -y -a 0
+```
+#### i2cget：读取 I2C 数据
+
+i2cget 用于从 I2C / SMBus 设备读取数据或寄存器内容。
+
+| 命令     | 选项       | 参数                                                 |
+| ------ | -------- | -------------------------------------------------- |
+| i2cget | -f -y -a | I2CBUS CHIP-ADDRESS [DATA-ADDRESS [MODE [LENGTH]]] |
+
+```text
+-f：强制访问，即使该设备已经被内核驱动占用
+
+-y：取消执行前的确认提示，直接执行
+
+-a：允许访问保留地址范围
+
+
+I2CBUS：
+I2C Bus 编号，例如 0、1、2
+
+CHIP-ADDRESS：
+I2C 设备地址
+
+DATA-ADDRESS：
+芯片内部寄存器地址 / Command
+
+MODE：
+
+b：Read Byte Data，读取 1 字节，默认
+
+w：Read Word Data，读取 2 字节
+
+c：先 Write Byte，再 Receive Byte
+
+s：SMBus Block Read
+
+i：I2C Block Read
+
+p：
+追加到模式后表示启用 SMBus PEC，例如 bp、wp
+
+LENGTH：
+Block Read 时指定读取长度，范围通常为 1～32
+```
+
+example：
+
+```bash
+# 从 I2C Bus 1、设备 0x2d 的寄存器 0x11 读取 1 字节
+i2cget -y 1 0x2d 0x11
+
+# 从寄存器 0x00 读取一个 16 bit Word
+i2cget -y 1 0x48 0x00 w
+
+# 从设备 0x50 的 0x00 开始读取 8 字节
+i2cget -y 4 0x50 0x00 i 8
+```
+
+---
+
+#### i2cset：写入 I2C 数据
+
+i2cset 用于向 I2C / SMBus 设备的寄存器写入数据。
+
+| 命令     | 选项             | 参数                                                  |
+| ------ | -------------- | --------------------------------------------------- |
+| i2cset | -f -y -m -r -a | I2CBUS CHIP-ADDRESS DATA-ADDRESS [VALUE] ... [MODE] |
+
+```text
+-f：强制访问已被内核驱动占用的设备
+
+-y：取消执行前确认
+
+-m MASK：
+只修改 MASK 中为 1 的位，其余位保持原值
+
+-r：
+写入完成后重新读取并检查结果
+
+-a：
+允许访问保留地址范围
+
+
+I2CBUS：
+I2C Bus 编号
+
+CHIP-ADDRESS：
+I2C 设备地址
+
+DATA-ADDRESS：
+芯片内部寄存器地址 / Command
+
+VALUE：
+要写入的数据
+
+
+MODE：
+
+c：只发送 DATA-ADDRESS，不发送 VALUE
+
+b：写 1 字节，默认
+
+w：写 16 bit Word
+
+s：SMBus Block Write
+
+i：I2C Block Write
+
+p：
+追加到模式后启用 PEC
+```
+
+example：
+
+```bash
+# 给设备 0x2d 的寄存器 0x11 写入 0x42
+i2cset -y 1 0x2d 0x11 0x42
+
+# 写入一个 16 bit 数据
+i2cset -y 1 0x48 0x02 0x5000 w
+
+# 只发送寄存器地址，不发送数据
+i2cset -y 0 0x50 0x10
+```
+
+---
+
+#### i2cdump：查看 I2C 寄存器内容
+
+i2cdump 用于一次查看一个 I2C 设备的一段或全部寄存器内容。
+
+|命令|选项|参数|
+|---|---|---|
+|i2cdump|-f -r -y -a|I2CBUS ADDRESS [MODE]|
+
+```text
+-f：强制访问已被内核驱动占用的设备
+
+-r FIRST-LAST：
+只读取指定寄存器范围
+
+-y：
+取消执行前确认
+
+-a：
+允许访问保留地址
+
+
+MODE：
+
+b：按 Byte 读取，默认
+
+w：按 16 bit Word 读取
+
+i：使用 I2C Block Read
+
+c：连续读取，适合支持地址自动递增的设备
+
+W：类似 w，但只在偶数寄存器地址发出读命令
+```
+
+example：
+
+```bash
+# 查看 Bus 9 上地址 0x50 设备的寄存器
+i2cdump 9 0x50
+
+# 不询问，使用 I2C Block Read
+i2cdump -y 9 0x50 i
+
+# 只查看寄存器 0x00～0x3f
+i2cdump -r 0x00-0x3f 1 0x2d
+```
+
+不要对未知设备地址随意执行 i2cdump，某些读取方式可能被特殊设备解释为写操作。
+
+---
+
+#### i2ctransfer：组合 I2C 传输
+
+i2ctransfer 用于自己构造一个或多个 I2C Message，并把它们组合成一次 I2C Transfer。
+
+它使用普通 I2C 传输，不是 SMBus 固定格式。
+
+|命令|选项|参数|
+|---|---|---|
+|i2ctransfer|-a -b -f -v -y|I2CBUS DESC [DATA] ...|
+
+DESC 格式：
+
+```text
+{r|w}LENGTH[@ADDRESS]
+```
+
+含义：
+
+```text
+r：读
+
+w：写
+
+LENGTH：
+本条 message 传输的字节数
+
+@ADDRESS：
+I2C 设备地址
+后续 message 地址不变时可以省略
+```
+
+例如：
+
+```text
+w1@0x50
+
+w：
+写操作
+
+1：
+写 1 字节
+
+@0x50：
+设备地址为 0x50
+```
+
+example：
+
+```bash
+# 向 EEPROM 0x50 写入地址 0x64，然后读取 8 字节
+i2ctransfer -y 0 w1@0x50 0x64 r8
+
+# 向设备 0x1e 的寄存器 0 写入 0x04
+i2ctransfer -y 0 w2@0x1e 0x00 0x04
+
+# 指定寄存器 0x0c 后连续读取 2 字节
+i2ctransfer -y 0 w1@0x1e 0x0c r2
+```
+
+一次包含多个 DESC 时：
+
+```text
+START
+ ↓
+第一个 Message
+ ↓
+Repeated START
+ ↓
+第二个 Message
+ ↓
+STOP
+```
+
+---
+
+libi2c 的 SMBus 函数在用户空间使用，通常需要：
+
+```c
+#include <linux/i2c-dev.h>
+#include <i2c/smbus.h>
+```
+
+编译时链接 libi2c：
+
+```bash
+gcc test.c -li2c -o test
+```
+
+使用这些函数之前，一般先：
+
+```c
+int fd;
+
+fd = open("/dev/i2c-0", O_RDWR);
+
+ioctl(fd, I2C_SLAVE, 0x50);
+```
+
+之后所有 i2c_smbus_() 操作都针对这个 fd 当前指定的从设备。
+
+### 函数
+#### open_i2c_dev
+
+```c
+/**
+ * @brief  根据 I2C Bus 编号打开对应的 I2C 设备节点。
+ *
+ * @param  i2cbus: I2C Bus 编号，例如 0 表示 I2C Bus 0。
+ *
+ * @param  filename: 用于保存打开的 I2C 设备节点路径。
+ *
+ * @param  size: filename 缓冲区的大小。
+ *
+ * @param  quiet: 是否禁止输出打开失败时的错误信息。
+ *                0 表示输出错误信息，非 0 表示不输出。
+ *
+ * @retval >=0: 打开成功，返回 I2C 设备的文件描述符。
+ *
+ * @retval -1: 打开 I2C 设备失败。
+ *
+ * @retval -EOVERFLOW: filename 缓冲区太小，设备节点路径被截断。
+ */
+#include "i2cbusses.h"
+
+int open_i2c_dev(int i2cbus, char *filename,
+                 size_t size, int quiet);
+```
+
+open_i2c_dev() 是 i2c-tools 自己封装的辅助函数，不是 Linux 系统调用。
+
+函数会根据 i2cbus 构造对应的 I2C 设备节点，并调用 open() 以读写方式打开。
+
+会依次尝试类似下面的设备节点：
+
+```text
+/dev/i2c/0
+/dev/i2c-0
+```
+
+代码示例：
+
+```c
+char filename[20];
+int fd;
+
+fd = open_i2c_dev(0, filename, sizeof(filename), 0);
+
+if (fd < 0)
+{
+    printf("open i2c device failed\n");
+    return -1;
+}
+```
+
+说明：
+
+```text
+0：
+表示打开 I2C Bus 0。
+
+filename：
+函数执行后保存实际使用的设备节点路径，
+例如 /dev/i2c-0。
+
+sizeof(filename)：
+告诉函数 filename 缓冲区有多大。
+
+0：
+quiet = 0，打开失败时允许输出错误信息。
+
+fd：
+打开成功后保存 I2C 设备文件描述符，
+后续可以使用 ioctl() 等接口访问 I2C 设备。
+```
+
+#### set_slave_addr
+
+```c
+/**
+ * @brief  为已经打开的 I2C 设备文件设置要访问的从设备地址。
+ *
+ * @param  file: I2C 设备文件描述符，通常由 open_i2c_dev() 返回。
+ *
+ * @param  address: 要访问的 I2C 从设备地址，例如 0x50。
+ *
+ * @param  force: 是否强制设置从设备地址。
+ *                0：使用 I2C_SLAVE。
+ *                非0：使用 I2C_SLAVE_FORCE，即使设备已被内核驱动占用也强制访问。
+ *
+ * @retval 0: 设置成功。
+ *
+ * @retval 负数: 设置失败，返回对应 errno 的负值。
+ */
+#include "i2cbusses.h"
+
+int set_slave_addr(int file, int address, int force);
+```
+
+set_slave_addr() 是 i2c-tools 自己封装的辅助函数，内部通过 ioctl() 配合 I2C_SLAVE 或 I2C_SLAVE_FORCE 设置当前要访问的 I2C 从设备地址。
+
+代码示例：
+
+```c
+char filename[20];
+int fd;
+int ret;
+
+fd = open_i2c_dev(0, filename, sizeof(filename), 0);
+if (fd < 0)
+{
+    return -1;
+}
+
+/* 设置要访问的从设备地址为 0x50，不强制访问 */
+ret = set_slave_addr(fd, 0x50, 0);
+if (ret < 0)
+{
+    return -1;
+}
+```
+
+说明：
+
+```text
+fd：
+表示已经打开的 I2C Bus。
+
+0x50：
+表示后续要访问设备地址为 0x50 的 I2C 从设备。
+
+force = 0：
+正常设置从设备地址。
+
+force != 0：
+强制设置从设备地址。
+```
+
+#### i2c_smbus_write_byte_data
+
+```c
+/**
+ * @brief  使用 SMBus Write Byte Data 方式，向 I2C 从设备写入 1 字节数据。
+ *
+ * @param  file: 已打开的 I2C 设备文件描述符。
+ *
+ * @param  command: SMBus Command 字节。
+ *                  对于很多寄存器型 I2C 设备，通常可以理解为寄存器地址。
+ *
+ * @param  value: 要写入的 1 字节数据。
+ *
+ * @retval 0: 写入成功。
+ *
+ * @retval -1: 写入失败，并设置 errno。
+ *
+ * @note   当该函数用于向 AT24C02 写数据时，函数返回后 AT24C02 还需要进行
+ *         EEPROM 内部写操作，内部写周期 tWR 最大为 10 ms。
+ *         简单处理时可在写成功后延时 10 ms，再进行下一次读写；
+ *         也可以通过 ACK Polling 判断内部写操作是否已经完成。
+ *
+ *         这里的 10 ms 是 AT24C02 芯片本身的要求，
+ *         不是 i2c_smbus_write_byte_data() 函数本身要求的延时时间。
+ */
+#include <i2c/smbus.h>
+
+__s32 i2c_smbus_write_byte_data(int file,
+                                __u8 command,
+                                __u8 value);
+```
+
+i2c_smbus_write_byte_data() 是 i2c-tools 中 libi2c 提供的用户空间库函数，不是 Linux 系统调用，也不是 Linux 内核函数。
+
+使用该函数前，通常需要先打开 `/dev/i2c-X`，并通过 I2C_SLAVE 或 I2C_SLAVE_FORCE 设置要访问的从设备地址。
+
+调用：
+
+```c
+i2c_smbus_write_byte_data(fd, 0x00, 0x03);
+```
+
+可以理解为：
+
+```text
+Command = 0x00
+Data    = 0x03
+```
+
+对于将 Command 作为寄存器地址使用的设备，相当于：
+
+```text
+向 0x00 寄存器写入 0x03
+```
+
+对应的 SMBus Write Byte Data 传输格式可以简单理解为：
+
+```text
+START
+  ↓
+Slave Address + Write
+  ↓
+ACK
+  ↓
+Command
+  ↓
+ACK
+  ↓
+Data
+  ↓
+ACK
+  ↓
+STOP
+```
+
+代码示例：
+
+```c
+int ret;
+
+/* 向当前选择的 I2C 从设备的 0x00 寄存器写入 0x03 */
+ret = i2c_smbus_write_byte_data(fd, 0x00, 0x03);
+
+if (ret < 0)
+{
+    perror("i2c_smbus_write_byte_data");
+    return -1;
+}
+```
+
+使用 libi2c 时，编译链接通常需要添加：
+
+```bash
+-li2c
+```
+
+例如：
+
+```bash
+gcc test.c -o test -li2c
+```
+
+内部调用关系可以简单理解为：
+
+```text
+i2c_smbus_write_byte_data()
+        ↓
+i2c_smbus_access()
+        ↓
+ioctl(file, I2C_SMBUS, ...)
+        ↓
+Linux i2c-dev
+        ↓
+I2C 控制器驱动
+        ↓
+I2C 从设备
+```
+
+#### i2c_smbus_read_i2c_block_data
+
+```c
+/**
+ * @brief  使用 SMBus I2C Block Read 方式，从 I2C 从设备连续读取多个字节的数据。
+ *
+ * @param  file: 已打开的 I2C 设备文件描述符。
+ *
+ * @param  command: SMBus Command 字节。
+ *                  对于很多寄存器型设备，通常可以理解为起始寄存器地址。
+ *
+ * @param  length: 希望读取的数据长度，最大为 32 字节。
+ *
+ * @param  values: 用于保存读取数据的缓冲区。
+ *
+ * @retval >0: 读取成功，返回实际读取到的字节数。
+ *
+ * @retval <0: 读取失败。
+ */
+#include <i2c/smbus.h>
+
+__s32 i2c_smbus_read_i2c_block_data(int file,
+                                    __u8 command,
+                                    __u8 length,
+                                    __u8 *values);
+```
+
+i2c_smbus_read_i2c_block_data() 是 i2c-tools 中 libi2c 提供的用户空间库函数，用于从指定 Command 开始连续读取多个字节。
+
+这里的 I2C Block Read 和 SMBus Block Read 不完全相同：读取多少字节由主机通过 length 指定，而不是由从设备返回长度。
+
+对于把 Command 当作寄存器地址使用的设备：
+
+```c
+i2c_smbus_read_i2c_block_data(fd, 0x0C, 2, buf);
+```
+
+可以简单理解为：
+
+```text
+从 0x0C 开始连续读取 2 字节数据
+        ↓
+buf[0] ← 第 1 个字节
+buf[1] ← 第 2 个字节
+```
+
+代码示例：
+
+```c
+__u8 buf[2];
+int ret;
+
+ret = i2c_smbus_read_i2c_block_data(fd, 0x0C, 2, buf);
+
+if (ret < 0)
+{
+    perror("i2c_smbus_read_i2c_block_data");
+    return -1;
+}
+```
 # 相关文件
 [[系统修改与环境配置记录]]
 [[嵌入式Linux应用开发完全手册V5.3_IMX6ULL_Pro开发板.pdf]]
 [[c_c++]]
+[[更改说明]]
 # # 
 
 # # 
