@@ -973,7 +973,202 @@ adb pull /tmp/hello .
 5. 重启开发板
 adb reboot
 ```
+## 1.8 Linux驱动相关命令
 
+### insmod
+
+加载指定的 `.ko` 内核模块。
+
+```bash
+insmod 模块文件
+```
+
+例如：
+
+```bash
+insmod hello_drv.ko
+```
+
+---
+
+### rmmod
+
+卸载已经加载的内核模块。
+
+```bash
+rmmod 模块名
+```
+
+例如：
+
+```bash
+rmmod hello_drv
+```
+
+模块名通常不写 `.ko` 后缀。
+
+---
+
+### lsmod
+
+查看当前已经加载到内核中的模块。
+
+```bash
+lsmod
+```
+
+可以用来确认驱动模块是否已经加载成功。
+
+---
+
+### dmesg
+
+查看 Linux 内核日志，驱动中 printk 输出的信息可以通过该命令查看。
+
+```bash
+dmesg
+```
+
+实时查看新产生的内核日志：
+
+```bash
+dmesg -w
+```
+
+---
+
+### mknod
+
+手动创建设备节点。
+
+```bash
+mknod 设备节点 类型 主设备号 次设备号
+```
+
+例如：
+
+```bash
+mknod /dev/hello c 240 0
+```
+
+其中：
+
+```text
+/dev/hello  → 设备节点
+c           → 字符设备
+240         → 主设备号
+0           → 次设备号
+```
+
+---
+
+### cat /proc/devices
+
+查看当前系统已经注册的字符设备和块设备及其主设备号。
+
+```bash
+cat /proc/devices
+```
+
+例如可能看到：
+
+```text
+Character devices:
+240 hello
+```
+
+表示名称为 hello 的字符设备使用主设备号 240。
+
+---
+
+### ls /dev
+
+查看 `/dev` 目录下已经存在的设备节点。
+
+```bash
+ls /dev
+```
+
+也可以直接查看指定设备：
+
+```bash
+ls -l /dev/hello
+```
+
+---
+
+### uname -r
+
+查看当前正在运行的 Linux 内核版本。
+
+```bash
+uname -r
+```
+
+例如：
+
+```text
+4.9.88
+```
+
+编译内核模块时，需要特别注意目标开发板的内核版本和内核源码是否匹配。
+
+---
+
+### modprobe
+
+按模块名加载内核模块，并自动处理模块之间的依赖关系。
+
+```bash
+modprobe 模块名
+```
+
+卸载：
+
+```bash
+modprobe -r 模块名
+```
+
+与 insmod 不同，modprobe 通常从系统的模块目录中查找模块，而不是直接指定 `.ko` 文件路径。
+
+---
+
+### modinfo
+
+查看内核模块的信息。
+
+```bash
+modinfo 模块文件
+```
+
+例如：
+
+```bash
+modinfo hello_drv.ko
+```
+
+可以查看模块名称、许可证、依赖等信息。
+
+---
+
+常用驱动调试流程：
+
+```bash
+# 加载驱动
+insmod hello_drv.ko
+
+# 确认模块是否已经加载
+lsmod
+
+# 查看内核打印
+dmesg
+
+# 查看设备节点
+ls -l /dev/hello
+
+# 卸载驱动
+rmmod hello_drv
+```
 # 2 环境配置
 
 ## 2.1 编译环境
@@ -1279,6 +1474,74 @@ arm-buildroot-linux-gnueabihf-gcc 是给 ARM 开发板编译程序用的；
 
 # 3 编译
 
+## 3.0 编译器预定义内容
+### `__FILE__`、`__LINE__`
+
+```c
+/* 不需要包含头文件，由编译器直接提供 */
+
+__FILE__    /* 当前源文件的文件名字符串 */
+__LINE__    /* 当前代码所在的行号 */
+```
+
+`__FILE__` 表示当前源文件名，结果是字符串。
+
+`__LINE__` 表示当前代码所在的源文件行号，结果是整数。
+
+常用于记录代码所在位置，方便调试。
+
+```c
+static const char *source_file = __FILE__;
+static int source_line = __LINE__;
+
+/*
+ * 假设这段代码位于 hello_drv.c 第 20 行附近：
+ *
+ * source_file -> "hello_drv.c"
+ * source_line -> 对应的源代码行号
+ */
+```
+
+```c
+ printk("%s line %d\n", __FILE__, __LINE__);
+```
+### `__FUNCTION__`
+
+```c
+/* 不需要包含头文件，由 GCC 编译器提供 */
+
+__FUNCTION__
+```
+
+`__FUNCTION__` 表示当前所在函数的函数名。
+
+它在 GCC 中是编译器提供的预定义标识符，**不是预处理宏**。
+
+
+```c
+static const char *get_function_name(void)
+{
+    return __FUNCTION__;
+}
+
+/*
+ * 调用 get_function_name() 时，
+ * 返回的字符串为 "get_function_name"。
+ */
+```
+
+```c
+
+printk("%s\n", __FUNCTION__);
+```
+
+在 hello_drv_read 函数中使用时，得到的字符串为：
+
+```text
+hello_drv_read
+```
+
+标准 C 中功能对应的标识符是 **func**。
 ## 3.1 编译的基本概念
 
 ```bash
@@ -1331,21 +1594,21 @@ hello.c  ->  hello.i  ->  hello.s  ->  hello.o  ->  hello
 
 #### 常用选项
 
-| 选项             | 作用                              |
-| ---------------- | --------------------------------- |
-| -o               | 指定输出文件名                    |
-| -E               | 只进行预处理                      |
-| -S               | 只进行预处理和编译，生成汇编文件  |
-| -c               | 只编译生成目标文件，不链接        |
-| -Wall            | 显示更多警告信息                  |
-| -Werror          | 将警告当成错误处理                |
-| -g               | 生成调试信息，方便gdb调试         |
-| -I   （大写的i） | 指定头文件路径                    |
-| -L               | 指定库文件路径                    |
-| -l   （小写的L） | 指定链接的库                      |
-| -D               | 定义宏                            |
-| -O               | 优化程序                          |
-| -v               | verbose，显示编译过程中的详细信息 |
+| 选项          | 作用                   |
+| ----------- | -------------------- |
+| -o          | 指定输出文件名              |
+| -E          | 只进行预处理               |
+| -S          | 只进行预处理和编译，生成汇编文件     |
+| -c          | 只编译生成目标文件，不链接        |
+| -Wall       | 显示更多警告信息             |
+| -Werror     | 将警告当成错误处理            |
+| -g          | 生成调试信息，方便gdb调试       |
+| -I   （大写的i） | 指定头文件路径              |
+| -L          | 指定库文件路径              |
+| -l   （小写的L） | 指定链接的库               |
+| -D          | 定义宏                  |
+| -O          | 优化程序                 |
+| -v          | verbose，显示编译过程中的详细信息 |
 
 #### **字符编码相关选项**
 
@@ -1766,12 +2029,12 @@ add.c 先编译成 add.o
 
 ### 4.6.5 常用 make 命令
 
-| 命令          | 作用                            |
-| ------------- | ------------------------------- |
-| `make`        | 执行默认目标                    |
+| 命令            | 作用                   |
+| ------------- | -------------------- |
+| `make`        | 执行默认目标               |
 | `make clean`  | 执行 `clean` 目标，清理生成文件 |
-| `make app`    | 执行 `app` 目标                 |
-| `make -C dir` | 进入 `dir` 目录执行 `make`      |
+| `make app`    | 执行 `app` 目标          |
+| `make -C dir` | 进入 `dir` 目录执行 `make` |
 
 ### 4.6.6 变量赋值方式
 
@@ -3389,7 +3652,7 @@ kill -9 1234
 kill命令要谨慎使用
 不要随便结束不认识的系统进程，否则可能导致开发板运行异常
 ```
-# 7 Linux 开发接口
+# 7 Linux 应用开发
 
 ## 7.1 文件与设备控制
 
@@ -8684,6 +8947,1150 @@ if (ret < 0)
     return -1;
 }
 ```
+# 9 Linux 驱动开发
+
+## 9.1 写驱动设备流程
+
+记录字符设备驱动源码从准备、实现文件操作，到注册设备、释放资源以及指定模块入口和出口的基本编写顺序。
+
+```
+开始编写字符设备驱动
+        ↓
+① 基础准备
+   ├── 包含内核头文件
+   └── 定义 major、缓冲区、class 等
+        ↓
+② 实现文件操作
+   ├── open / read / write / release
+   └── 填入 struct file_operations
+        ↓
+③ 初始化并注册设备
+   ├── register_chrdev()   注册字符设备
+   ├── class_create()      创建 class
+   └── device_create()     创建设备
+        ↓
+④ 退出并释放资源
+   ├── device_destroy()
+   ├── class_destroy()
+   └── unregister_chrdev()
+        ↓
+⑤ 指定模块入口和出口
+   ├── module_init()
+   ├── module_exit()
+   └── MODULE_LICENSE()
+        ↓
+驱动源码完成
+
+```
+
+## 9.2 内核基础
+
+整理驱动开发中最基础的内核模块、初始化与退出标记以及内核日志相关内容。
+
+### 宏
+
+#### THIS_MODULE
+
+```c
+#include <linux/module.h>
+
+THIS_MODULE
+
+```
+
+THIS\_MODULE 表示当前内核模块。
+
+在可加载内核模块中，它是指向当前模块对应 struct module 的指针。
+
+常用于告诉内核某个对象属于当前模块。
+
+```c
+#include <linux/fs.h>
+#include <linux/module.h>
+
+static const struct file_operations demo_fops = {
+    .owner = THIS_MODULE,
+};
+
+```
+
+这里把 demo\_fops 的 owner 设置为 THIS\_MODULE，表示这组文件操作属于当前内核模块。
+
+#### MODULE\_LICENSE
+
+```c
+#include <linux/module.h>
+
+MODULE_LICENSE("GPL");
+
+```
+
+MODULE\_LICENSE 用于声明内核模块的许可证信息。
+
+例如：
+
+```c
+MODULE_LICENSE("GPL");
+
+```
+
+表示该模块声明使用 GPL 许可证。
+
+它属于模块信息声明宏，不是函数。
+
+#### `__init`、`__exit`
+
+```c
+#include <linux/init.h>
+
+#define __init ...
+#define __exit ...
+
+/* 使用形式 */
+static int __init func_init(void);
+static void __exit func_exit(void);
+
+```
+
+`__init`：标记初始化阶段使用的函数，使函数代码被放入内核专门的初始化代码段。
+
+`__exit`：标记退出阶段使用的函数，使函数代码被放入内核专门的退出代码段。
+
+例如：
+
+```c
+static int driver_ready;
+
+static int __init demo_init(void)
+{
+    driver_ready = 1;
+    return 0;
+}
+
+static void __exit demo_exit(void)
+{
+    driver_ready = 0;
+}
+
+```
+
+这里的 demo\_init 被标记为初始化函数代码，demo\_exit 被标记为退出函数代码。
+
+它们属于 Linux 内核的修饰宏，不是函数。
+
+### 函数
+
+#### module_init
+
+```c
+/**
+ * @brief  指定内核模块的初始化入口函数。
+ *
+ * @param  initfn: 模块初始化函数，函数形式通常为 int func(void)。
+ *
+ * @retval 无: module_init 本身是函数式宏，没有供调用者接收的返回值。
+ */
+#include <linux/module.h>
+
+module_init(initfn);
+
+```
+
+类型：函数式宏。
+
+当模块被加载时，内核会执行 module\_init 指定的初始化函数。
+
+```c
+static int __init demo_init(void)
+{
+    /* 在这里完成驱动初始化工作 */
+    return 0;
+}
+
+module_init(demo_init);
+
+```
+
+这里先真正定义了 demo\_init，然后通过 module\_init 把它指定为模块初始化入口。
+
+#### module_exit
+
+```c
+/**
+ * @brief  指定内核模块的退出函数。
+ *
+ * @param  exitfn: 模块退出函数，函数形式通常为 void func(void)。
+ *
+ * @retval 无: module_exit 本身是函数式宏，没有供调用者接收的返回值。
+ */
+#include <linux/module.h>
+
+module_exit(exitfn);
+
+```
+
+类型：函数式宏。
+
+卸载可加载模块时，内核会执行 module\_exit 指定的退出函数。
+
+```c
+static void __exit demo_exit(void)
+{
+    /* 在这里释放驱动占用的资源 */
+}
+
+module_exit(demo_exit);
+
+```
+
+这里先真正定义了 demo\_exit，然后通过 module\_exit 把它指定为模块退出入口。
+
+#### printk
+
+```c
+/**
+ * @brief  向 Linux 内核日志缓冲区输出格式化信息。
+ *
+ * @param  fmt: 格式字符串，使用方式与 printf 的格式字符串类似。
+ *
+ * @param  ...: 与格式字符串对应的可变参数。
+ *
+ * @retval 返回实际输出的字符数量。
+ */
+#include <linux/printk.h>
+
+int printk(const char *fmt, ...);
+
+```
+
+printk 是内核空间使用的日志输出函数，不是用户空间的 printf。
+
+```c
+int major = 100;
+
+printk("hello: major = %d\n", major);
+
+```
+
+这段代码中 major 已明确赋值为 100，因此日志中会输出类似：
+
+```text
+hello: major = 100
+
+```
+
+内核日志可以通过 dmesg 等方式查看。
+
+## 9.3 内核通用机制
+
+整理与具体设备类型无关、在不同驱动中都可能使用的通用内核机制，例如用户空间与内核空间的数据交互和错误处理。
+
+### 宏
+
+#### `__user`
+
+```c
+#include <linux/compiler.h>
+
+/* 使用形式 */
+char __user *buf;
+const char __user *buf;
+
+```
+
+`__user` 用于标记一个指针指向的是用户空间地址。
+
+例如驱动的 read 回调：
+
+```c
+static ssize_t demo_read(struct file *file,
+                         char __user *buf,
+                         size_t size,
+                         loff_t *offset)
+{
+    /*
+     * buf 由内核传给驱动，
+     * 它指向调用 read() 的用户程序提供的缓冲区。
+     */
+    return 0;
+}
+
+```
+
+这里的 `__user` 明确表示 buf 指向用户空间内存。
+
+它是修饰宏，不是数据类型。
+
+例如：
+
+```c
+char __user *buf;
+
+```
+
+表示 buf 指向用户空间内存。
+
+它主要用于内核源码的类型检查和静态检查，本身不是数据类型。
+
+普通编译情况下通常不会产生实际运行代码。
+
+### 函数
+
+#### copy_to_user
+
+```c
+/**
+ * @brief  将数据从内核空间复制到用户空间。
+ *
+ * @param  to: 用户空间目标地址。
+ *
+ * @param  from: 内核空间源地址。
+ *
+ * @param  n: 需要复制的字节数。
+ *
+ * @retval 0: 指定数据全部复制成功。
+ *
+ * @retval 非0: 没有成功复制的字节数。
+ */
+#include <linux/uaccess.h>
+
+unsigned long copy_to_user(void __user *to,
+                           const void *from,
+                           unsigned long n);
+
+```
+
+```c
+#include <linux/errno.h>
+#include <linux/fs.h>
+#include <linux/uaccess.h>
+
+static ssize_t demo_read(struct file *file,
+                         char __user *buf,
+                         size_t size,
+                         loff_t *offset)
+{
+    char kernel_buf[] = "hello";
+    size_t copy_size = sizeof(kernel_buf);
+
+    /* 用户提供的缓冲区较小时，只复制能够容纳的部分 */
+    if (size < copy_size)
+        copy_size = size;
+
+    if (copy_to_user(buf, kernel_buf, copy_size) != 0)
+        return -EFAULT;
+
+    return copy_size;
+}
+
+```
+
+这里：
+
+```text
+buf
+→ read 回调传入的用户空间缓冲区
+
+kernel_buf
+→ 内核空间中的数据
+
+copy_size
+→ 实际准备复制的字节数
+
+```
+
+因此这次调用的实际含义就是：把 kernel\_buf 中的数据复制给调用 read() 的用户程序。
+
+#### copy_from_user
+
+```c
+/**
+ * @brief  将数据从用户空间复制到内核空间。
+ *
+ * @param  to: 内核空间目标地址。
+ *
+ * @param  from: 用户空间源地址。
+ *
+ * @param  n: 需要复制的字节数。
+ *
+ * @retval 0: 指定数据全部复制成功。
+ *
+ * @retval 非0: 没有成功复制的字节数。
+ */
+#include <linux/uaccess.h>
+
+unsigned long copy_from_user(void *to,
+                             const void __user *from,
+                             unsigned long n);
+
+```
+
+```c
+#include <linux/errno.h>
+#include <linux/fs.h>
+#include <linux/uaccess.h>
+
+static char kernel_buf[32];
+
+static ssize_t demo_write(struct file *file,
+                          const char __user *buf,
+                          size_t size,
+                          loff_t *offset)
+{
+    size_t copy_size = size;
+
+    if (copy_size > sizeof(kernel_buf))
+        copy_size = sizeof(kernel_buf);
+
+    if (copy_from_user(kernel_buf, buf, copy_size) != 0)
+        return -EFAULT;
+
+    return copy_size;
+}
+
+```
+
+这里：
+
+```text
+buf
+→ write 回调传入的用户空间数据
+
+kernel_buf
+→ 驱动自己的内核空间缓冲区
+
+copy_size
+→ 实际复制的字节数
+
+```
+
+因此这次调用的实际含义就是：把用户程序通过 write() 写入的数据保存到驱动的 kernel\_buf 中。
+
+#### PTR_ERR
+
+```c
+/**
+ * @brief  从 Linux 内核错误指针中取出其中保存的错误码。
+ *
+ * @param  ptr: 错误指针。
+ *
+ * @retval 返回错误指针中保存的错误码，通常为负数。
+ */
+#include <linux/err.h>
+
+static inline long PTR_ERR(const void *ptr);
+
+```
+
+```c
+#include <linux/device.h>
+#include <linux/err.h>
+#include <linux/module.h>
+
+static int create_demo_class(void)
+{
+    struct class *demo_class;
+
+    demo_class = class_create(THIS_MODULE, "demo_class");
+
+    if (IS_ERR(demo_class))
+
+    {
+        err = PTR_ERR(demo_class);
+        printk("class_create failed, err = %d\n", err);
+
+        return err;    
+    }
+
+    class_destroy(demo_class);
+    return 0;
+}
+
+```
+
+这里 demo\_class 来自 class\_create。
+
+如果 class\_create 失败，demo\_class 中保存的不是正常 class 地址，而是错误指针；PTR\_ERR 把其中的错误码取出来作为函数返回值。
+
+#### IS_ERR
+
+```c
+/**
+ * @brief  判断一个指针是否为 Linux 内核错误指针。
+ *
+ * @param  ptr: 需要判断的指针。
+ *
+ * @retval true: ptr 是错误指针。
+ *
+ * @retval false: ptr 不是错误指针。
+ */
+#include <linux/err.h>
+
+static inline bool IS_ERR(const void *ptr);
+
+```
+
+```c
+#include <linux/device.h>
+#include <linux/err.h>
+#include <linux/module.h>
+
+static int create_demo_class(void)
+{
+    struct class *demo_class;
+
+    demo_class = class_create(THIS_MODULE, "demo_class");
+
+    if (IS_ERR(demo_class))
+        return PTR_ERR(demo_class);
+
+    class_destroy(demo_class);
+    return 0;
+}
+
+```
+
+这里 IS\_ERR 判断 class\_create 返回的 demo\_class 是否是错误指针。
+
+不能仅通过 demo\_class 是否等于 NULL 来判断 class\_create 是否失败。
+
+## 9.4 文件与设备
+
+整理字符设备驱动所依赖的 VFS 文件操作接口、设备号以及设备注册和注销相关内容。
+
+### 数据类型
+
+#### struct file_operations
+
+```c
+#include <linux/fs.h>
+
+/* Linux 4.9，省略当前未学习的成员 */
+struct file_operations {
+    struct module *owner;
+
+    ssize_t (*read)(struct file *file,
+                    char __user *buf,
+                    size_t count,
+                    loff_t *ppos);
+
+    ssize_t (*write)(struct file *file,
+                     const char __user *buf,
+                     size_t count,
+                     loff_t *ppos);
+
+    int (*open)(struct inode *inode,
+                struct file *file);
+
+    int (*release)(struct inode *inode,
+                   struct file *file);
+
+    /* 还有其他成员 */
+};
+
+```
+
+struct file\_operations 用来保存一组文件操作函数指针。
+
+把驱动自己的函数填入对应成员后，用户程序对设备文件进行相应操作时，内核就可以找到驱动对应的处理函数。
+
+| 成员 作用   |               |
+| ------- | ------------- |
+| owner   | 指定这组文件操作所属的模块 |
+| open    | 文件被打开时调用      |
+| read    | 读取文件时调用       |
+| write   | 写入文件时调用       |
+| release | 文件被关闭时调用      |
+
+```c
+#include <linux/fs.h>
+#include <linux/module.h>
+
+static int demo_open(struct inode *inode, struct file *file)
+{
+    return 0;
+}
+
+static ssize_t demo_read(struct file *file,
+                         char __user *buf,
+                         size_t size,
+                         loff_t *offset)
+{
+    return 0;
+}
+
+static const struct file_operations demo_fops = {
+    .owner = THIS_MODULE,
+    .open  = demo_open,
+    .read  = demo_read,
+};
+
+```
+
+这里 demo\_open 和 demo\_read 都已经真正定义。
+
+demo\_fops 的作用就是建立：
+
+```text
+open 操作 → demo_open
+read 操作 → demo_read
+
+```
+
+这种对应关系。
+
+#### struct file
+
+```c
+#include <linux/fs.h>
+
+/* Linux 4.9，省略大量成员 */
+struct file {
+    struct inode *f_inode;
+    const struct file_operations *f_op;
+    loff_t f_pos;
+    void *private_data;
+
+    /* 还有其他成员 */
+};
+
+```
+
+struct file 表示内核中的一个**已经打开的文件对象**。
+
+用户程序每成功打开一次文件或设备文件，内核都会建立相应的打开文件对象。
+
+| 成员 作用         |                            |
+| ------------- | -------------------------- |
+| f\_inode      | 指向该文件对应的 inode             |
+| f\_op         | 指向当前文件使用的 file\_operations |
+| f\_pos        | 当前文件读写位置                   |
+| private\_data | 可供驱动保存本次打开实例的私有数据          |
+
+#### struct inode
+
+```c
+#include <linux/fs.h>
+
+/* Linux 4.9，省略大量成员 */
+struct inode {
+    unsigned long i_ino;
+    dev_t i_rdev;
+    loff_t i_size;
+
+    const struct file_operations *i_fop;
+
+    union {
+        struct pipe_inode_info *i_pipe;
+        struct block_device *i_bdev;
+        struct cdev *i_cdev;
+        char *i_link;
+        unsigned i_dir_seq;
+    };
+
+    /* 还有其他成员 */
+};
+
+```
+
+struct inode 用来描述文件系统中的一个文件对象。
+
+对于设备文件，其中还可以保存设备号以及与具体设备相关的信息。
+
+| 成员 作用   |                        |
+| ------- | ---------------------- |
+| i\_ino  | inode 编号               |
+| i\_rdev | 设备文件对应的设备号             |
+| i\_size | 文件大小                   |
+| i\_fop  | 文件对应的 file\_operations |
+| i\_cdev | 字符设备对应的 cdev           |
+
+#### loff_t
+
+```c
+#include <linux/types.h>
+
+typedef __kernel_loff_t loff_t;
+
+```
+
+loff\_t 是 Linux 中用于表示文件偏移位置的数据类型。
+
+在 read、write 等文件操作回调中，经常通过 loff\_t 指针表示当前文件位置。
+
+```c
+#include <linux/fs.h>
+
+static ssize_t demo_read(struct file *file,
+                         char __user *buf,
+                         size_t size,
+                         loff_t *offset)
+{
+    loff_t old_offset = *offset;
+
+    /* 假设本次读取了 4 字节 */
+    *offset = old_offset + 4;
+
+    return 4;
+}
+
+```
+
+这里 offset 由内核作为 read 回调参数传入。
+
+如果进入函数时：
+
+```text
+*offset = 10
+
+```
+
+本次读取 4 字节后：
+
+```text
+*offset = 14
+
+```
+
+因此 loff\_t 在这里表示的就是文件中的位置。
+
+### 函数
+
+#### MKDEV
+
+```c
+/**
+ * @brief  根据主设备号和次设备号生成完整的设备号。
+ *
+ * @param  ma: 主设备号。
+ *
+ * @param  mi: 次设备号。
+ *
+ * @retval 返回组合后的 dev_t 类型设备号。
+ */
+#include <linux/kdev_t.h>
+
+MKDEV(ma, mi);
+
+```
+
+类型：函数式宏。
+
+```c
+unsigned int major = 240;
+unsigned int minor = 0;
+dev_t devno;
+
+devno = MKDEV(major, minor);
+
+```
+
+这里：
+
+```text
+major = 240
+minor = 0
+
+```
+
+所以 devno 表示的就是设备号：
+
+```text
+240:0
+
+```
+
+MKDEV 的作用就是把分开的主设备号和次设备号组合成一个完整的 dev\_t 设备号。
+
+#### register_chrdev
+
+```c
+/**
+ * @brief  注册字符设备，并将字符设备与 file_operations 关联。
+ *
+ * @param  major: 主设备号。
+ *                传入 0 时由内核动态分配主设备号；
+ *                大于 0 时尝试使用指定主设备号。
+ *
+ * @param  name: 字符设备注册名称。
+ *
+ * @param  fops: 指向该字符设备 file_operations 的指针。
+ *
+ * @retval 大于0: major 为 0 时，返回动态分配到的主设备号。
+ *
+ * @retval 0: 使用指定主设备号注册成功。
+ *
+ * @retval 负数: 注册失败，返回对应的负错误码。
+ */
+#include <linux/fs.h>
+
+static inline int register_chrdev(
+    unsigned int major,
+    const char *name,
+    const struct file_operations *fops);
+
+```
+
+```c
+#include <linux/fs.h>
+#include <linux/module.h>
+
+static int demo_open(struct inode *inode, struct file *file)
+{
+    return 0;
+}
+
+static const struct file_operations demo_fops = {
+    .owner = THIS_MODULE,
+    .open  = demo_open,
+};
+
+static int demo_register(void)
+{
+    int major;
+
+    major = register_chrdev(0, "demo", &demo_fops);
+
+    if (major < 0)
+        return major;
+
+    /*
+     * 注册成功后：
+     * major      = 内核动态分配的主设备号
+     * "demo"     = 字符设备注册名称
+     * demo_fops  = 该字符设备对应的文件操作
+     */
+
+    return major;
+}
+
+```
+
+这里的 demo\_fops 和 demo\_open 都已经定义，因此可以清楚看到 register\_chrdev 建立的是：
+
+```text
+字符设备
+    ↓
+demo_fops
+    ↓
+demo_open 等驱动回调函数
+
+```
+
+#### unregister_chrdev
+
+```c
+/**
+ * @brief  注销之前通过 register_chrdev 注册的字符设备。
+ *
+ * @param  major: 注册字符设备时使用或获得的主设备号。
+ *
+ * @param  name: 注册字符设备时使用的名称。
+ *
+ * @retval 无返回值。
+ */
+#include <linux/fs.h>
+
+static inline void unregister_chrdev(
+    unsigned int major,
+    const char *name);
+
+```
+
+```c
+#include <linux/fs.h>
+#include <linux/module.h>
+
+static const struct file_operations demo_fops = {
+    .owner = THIS_MODULE,
+};
+
+static void demo(void)
+{
+    int major;
+
+    major = register_chrdev(0, "demo", &demo_fops);
+
+    if (major < 0)
+        return;
+
+    /*
+     * 此时 major 就是上面注册成功后得到的主设备号。
+     * 不再使用该字符设备时，用同一个 major 和名称进行注销。
+     */
+    unregister_chrdev(major, "demo");
+}
+
+```
+
+这里的 major 不是凭空出现的，而是前面的 register\_chrdev 注册成功后得到的主设备号。
+
+## 9.5 Linux 设备模型
+
+整理 Linux 设备模型中 class 和 device 的创建、管理与销毁接口，用于组织设备并建立对应的设备对象。
+
+### 函数
+
+#### class_create
+
+```c
+/**
+ * @brief  创建一个 Linux 设备类别 class。
+ *
+ * @param  owner: 拥有该 class 的内核模块，
+ *                模块驱动中通常传入 THIS_MODULE。
+ *
+ * @param  name: class 的名称。
+ *
+ * @retval 正常指针: 创建成功，返回 struct class 指针。
+ *
+ * @retval 错误指针: 创建失败，返回编码了错误码的错误指针，
+ *                   可使用 IS_ERR 和 PTR_ERR 判断和获取错误码。
+ */
+#include <linux/device.h>
+
+class_create(owner, name);
+
+```
+
+类型：函数式宏。
+
+```c
+#include <linux/device.h>
+#include <linux/err.h>
+#include <linux/module.h>
+
+static int  __init hello_init(void)
+
+{
+    printk("%s %s line: %d\n", __FILE__, __FUNCTION__, __LINE__);
+    
+    major = register_chrdev(0, "hello", &hello_drv_op);
+    hello_class = class_create(THIS_MODULE, "hello_class");
+    if (IS_ERR(hello_class))
+    {
+        int err;
+
+        err = PTR_ERR(hello_class);
+
+        printk("class_create failed, err = %d\n", err);
+
+        unregister_chrdev(major, "my_hello");
+
+        return err;    
+    }
+
+    device_create(hello_class, NULL, MKDEV(major, 0), NULL, "hello");
+
+    return 0;
+
+}
+
+```
+
+这里 demo\_class 已明确声明，并直接接收 class\_create 的返回值，因此可以看到这个返回指针后续如何判断和使用。
+
+#### class_destroy
+
+```c
+/**
+ * @brief  销毁之前创建的设备类别 class。
+ *
+ * @param  cls: 需要销毁的 struct class 指针。
+ *
+ * @retval 无返回值。
+ */
+#include <linux/device.h>
+
+void class_destroy(struct class *cls);
+
+```
+
+```c
+#include <linux/device.h>
+#include <linux/err.h>
+#include <linux/module.h>
+
+static void demo(void)
+{
+    struct class *demo_class;
+
+    demo_class = class_create(THIS_MODULE, "demo_class");
+
+    if (IS_ERR(demo_class))
+        return;
+
+    /* demo_class 确实来自前面的 class_create */
+    class_destroy(demo_class);
+}
+
+```
+
+这里可以直接看出 class\_destroy 使用的 demo\_class 是前面 class\_create 成功创建出来的对象，而不是一个来源不明的指针。
+
+#### device_create
+
+```c
+/**
+ * @brief  在指定 class 中创建并注册一个设备。
+ *
+ * @param  cls: 设备所属的 class。
+ *
+ * @param  parent: 父设备指针，没有父设备时可以传入 NULL。
+ *
+ * @param  devt: 设备号，通常使用 MKDEV 生成。
+ *
+ * @param  drvdata: 与设备关联的驱动私有数据，
+ *                  不需要时可以传入 NULL。
+ *
+ * @param  fmt: 设备名称格式字符串。
+ *
+ * @param  ...: 与 fmt 对应的可变参数。
+ *
+ * @retval 正常指针: 创建成功，返回 struct device 指针。
+ *
+ * @retval 错误指针: 创建失败，返回编码了错误码的错误指针。
+ */
+#include <linux/device.h>
+
+struct device *device_create(
+    struct class *cls,
+    struct device *parent,
+    dev_t devt,
+    void *drvdata,
+    const char *fmt,
+    ...);
+
+```
+
+```c
+#include <linux/device.h>
+#include <linux/err.h>
+#include <linux/kdev_t.h>
+#include <linux/module.h>
+
+static int demo(void)
+{
+    struct class *demo_class;
+    struct device *demo_device;
+    unsigned int major = 240;
+    dev_t devno;
+
+    /*
+     * 假设主设备号 240 已经通过字符设备注册接口注册成功。
+     */
+    devno = MKDEV(major, 0);
+
+    demo_class = class_create(THIS_MODULE, "demo_class");
+    if (IS_ERR(demo_class))
+        return PTR_ERR(demo_class);
+
+    demo_device = device_create(demo_class,
+                                NULL,
+                                devno,
+                                NULL,
+                                "demo");
+
+    if (IS_ERR(demo_device)) {
+        class_destroy(demo_class);
+        return PTR_ERR(demo_device);
+    }
+
+    return 0;
+}
+
+```
+
+这个示例中各参数来源是明确的：
+
+```text
+demo_class
+→ class_create 创建得到
+
+NULL
+→ 当前没有父设备
+
+devno
+→ 由主设备号 240、次设备号 0 通过 MKDEV 生成
+
+NULL
+→ 当前不保存额外驱动私有数据
+
+"demo"
+→ 创建的设备名称
+
+```
+
+#### device_destroy
+
+```c
+/**
+ * @brief  删除指定 class 中对应设备号的设备。
+ *
+ * @param  cls: 设备所属的 class。
+ *
+ * @param  devt: 要删除设备的设备号。
+ *
+ * @retval 无返回值。
+ */
+#include <linux/device.h>
+
+void device_destroy(struct class *cls, dev_t devt);
+
+```
+
+```c
+#include <linux/device.h>
+#include <linux/err.h>
+#include <linux/kdev_t.h>
+#include <linux/module.h>
+
+static void demo(void)
+{
+    struct class *demo_class;
+    struct device *demo_device;
+    dev_t devno = MKDEV(240, 0);   /* 假设 240:0 已经注册 */
+
+    demo_class = class_create(THIS_MODULE, "demo_class");
+    if (IS_ERR(demo_class))
+        return;
+
+    demo_device = device_create(demo_class,
+                                NULL,
+                                devno,
+                                NULL,
+                                "demo");
+
+    if (IS_ERR(demo_device)) {
+        class_destroy(demo_class);
+        return;
+    }
+
+    /*
+     * 上面确实创建了 devno 对应的设备，
+     * 不再使用时再用同一个 class 和 devno 删除。
+     */
+    device_destroy(demo_class, devno);
+
+    class_destroy(demo_class);
+}
+
+```
+
+这里 device\_destroy 的两个参数都有明确来源：
+
+```text
+demo_class
+→ 前面 class_create 创建的设备类别
+
+devno
+→ 前面 device_create 创建设备时使用的同一个设备号
+
+```
+
+这样才能明确看出 device\_create 和 device\_destroy 之间的对应关系。
+
+
 # 相关文件
 [[系统修改与环境配置记录]]
 [[嵌入式Linux应用开发完全手册V5.3_IMX6ULL_Pro开发板.pdf]]

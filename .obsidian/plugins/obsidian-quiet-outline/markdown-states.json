@@ -1,52 +1,38 @@
 {
   "Linux/00_Linux_main.md": {
     "expandedKeys": [
-      "item-1-0",
-      "item-2-258",
-      "item-1-166",
-      "item-1-270",
-      "item-2-307",
       "item-3-315",
-      "item-2-271",
-      "item-3-207",
-      "item-2-206",
-      "item-3-212",
-      "item-2-211",
-      "item-1-75",
-      "item-2-81",
-      "item-3-309",
-      "item-3-253",
-      "item-3-249",
-      "item-3-241",
-      "item-2-217",
-      "item-3-225"
+      "item-2-307",
+      "item-1-0",
+      "item-2-1",
+      "item-2-31",
+      "item-1-166"
     ],
     "cursor": {
       "from": {
-        "line": 5955,
+        "line": 0,
         "ch": 0
       },
       "to": {
-        "line": 5955,
+        "line": 0,
         "ch": 0
       }
     },
-    "scroll": 5934.768601190476
+    "scroll": 0
   },
   "_README/笔记格式提示词.md": {
     "expandedKeys": [
-      "item-1-3",
-      "item-1-5"
+      "item-1-3"
     ],
-    "scroll": 79.92476303317535,
+    "scroll": 0,
     "cursor": {
       "from": {
-        "line": 95,
-        "ch": 8
+        "line": 2,
+        "ch": 0
       },
       "to": {
-        "line": 95,
-        "ch": 3
+        "line": 2,
+        "ch": 0
       }
     }
   },
@@ -183,12 +169,12 @@
   "Linux/更改说明.md": {
     "cursor": {
       "from": {
-        "line": 3,
-        "ch": 4
+        "line": 9,
+        "ch": 33
       },
       "to": {
-        "line": 3,
-        "ch": 4
+        "line": 4,
+        "ch": 0
       }
     },
     "expandedKeys": []
@@ -206,5 +192,128 @@
         "ch": 0
       }
     }
+  },
+  "_README/笔记格式提示词_已补充Linux驱动分类规则.md": {
+    "expandedKeys": [
+      "item-1-3"
+    ],
+    "scroll": 224.73763020833334,
+    "cursor": {
+      "from": {
+        "line": 120,
+        "ch": 0
+      },
+      "to": {
+        "line": 120,
+        "ch": 0
+      }
+    }
+  },
+  "_README/笔记格式要求.md": {
+    "expandedKeys": [
+      "item-1-3",
+      "item-1-5"
+    ],
+    "cursor": {
+      "from": {
+        "line": 186,
+        "ch": 3
+      },
+      "to": {
+        "line": 186,
+        "ch": 3
+      }
+    },
+    "scroll": 0
+  },
+  "Linux/00_Linux笔记.md": {
+    "expandedKeys": [
+      "item-1-334",
+      "item-1-0",
+      "item-1-64",
+      "item-2-53",
+      "item-2-95",
+      "item-3-105",
+      "item-3-111",
+      "item-2-73",
+      "item-1-143",
+      "item-2-146",
+      "item-2-1",
+      "item-3-329",
+      "item-2-321",
+      "item-2-336",
+      "item-3-337",
+      "item-3-341",
+      "item-2-345",
+      "item-2-353",
+      "item-3-346",
+      "item-3-348",
+      "item-3-354",
+      "item-3-359",
+      "item-2-285",
+      "item-2-363",
+      "item-3-364"
+    ],
+    "cursor": {
+      "from": {
+        "line": 1086,
+        "ch": 0
+      },
+      "to": {
+        "line": 1086,
+        "ch": 0
+      }
+    },
+    "scroll": 1064.159050017992
+  },
+  "_README/笔记格式提示词_精简第五章.md": {
+    "expandedKeys": [],
+    "scroll": 103.078125,
+    "cursor": {
+      "from": {
+        "line": 0,
+        "ch": 0
+      },
+      "to": {
+        "line": 0,
+        "ch": 0
+      }
+    }
+  },
+  "_README/粘贴的 markdown (1).md": {
+    "expandedKeys": [
+      "item-1-0",
+      "item-4-4",
+      "item-3-3",
+      "item-2-2",
+      "item-4-7",
+      "item-3-10",
+      "item-3-13"
+    ],
+    "cursor": {
+      "from": {
+        "line": 9,
+        "ch": 27
+      },
+      "to": {
+        "line": 9,
+        "ch": 27
+      }
+    },
+    "scroll": 13.470238095238095
+  },
+  "_README/restructured_ch9.md": {
+    "expandedKeys": [],
+    "cursor": {
+      "from": {
+        "line": 0,
+        "ch": 14
+      },
+      "to": {
+        "line": 0,
+        "ch": 14
+      }
+    },
+    "scroll": 0
   }
 }
