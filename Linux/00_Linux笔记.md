@@ -1029,12 +1029,6 @@ lsmod
 dmesg
 ```
 
-实时查看新产生的内核日志：
-
-```bash
-dmesg -w
-```
-
 ---
 
 ### mknod
@@ -1542,6 +1536,38 @@ hello_drv_read
 ```
 
 标准 C 中功能对应的标识符是 **func**。
+### `__func__`
+
+`__func__` 是 C99 标准提供的预定义标识符，用于获取当前函数的函数名。
+
+无需包含头文件。
+
+```c
+void test(void)
+{
+    printf("function: %s\n", __func__);
+}
+```
+
+输出：
+
+```text
+function: test
+```
+
+常用于调试和日志打印：
+
+```c
+printk("%s\n", __func__);
+```
+
+与 `__FUNCTION__` 的区别：
+
+| 名称             | 来源     | 说明                     |
+| -------------- | ------ | ---------------------- |
+| `__func__`     | C99 标准 | 标准写法，推荐使用              |
+| `__FUNCTION__` | GCC 扩展 | GCC 提供，Linux 内核代码中也很常见 |
+
 ## 3.1 编译的基本概念
 
 ```bash
@@ -9654,8 +9680,61 @@ static ssize_t demo_read(struct file *file,
 
 因此 loff\_t 在这里表示的就是文件中的位置。
 
-### 函数
+#### dev_t
 
+```c
+#include <linux/types.h>
+
+typedef __kernel_dev_t dev_t;
+```
+
+dev_t 是 Linux 内核中用于保存**完整设备号**的数据类型，一个 dev_t 中同时包含：
+
+```text
+主设备号 + 次设备号
+```
+
+通常使用 MAJOR()、MINOR() 分别取出主设备号和次设备号，使用 MKDEV() 将二者组合成 dev_t。
+
+```c
+dev_t dev;
+
+dev = MKDEV(major, minor);
+```
+
+### 宏
+#### MAJOR
+
+```c
+#include <linux/kdev_t.h>
+
+#define MAJOR(dev) ((unsigned int)((dev) >> MINORBITS))
+```
+
+MAJOR() 是函数式宏，用于从完整设备号 dev_t 中取得**主设备号**。
+
+```c
+dev_t dev = MKDEV(major, minor);
+unsigned int major_num;
+
+major_num = MAJOR(dev);
+```
+#### MINOR
+
+```c
+#include <linux/kdev_t.h>
+
+#define MINOR(dev) ((unsigned int)((dev) & MINORMASK))
+```
+
+MINOR() 是函数式宏，用于从完整设备号 dev_t 中取得**次设备号**。
+
+```c
+dev_t dev = MKDEV(major, minor);
+unsigned int minor_num;
+
+minor_num = MINOR(dev);
+```
 #### MKDEV
 
 ```c
@@ -9701,6 +9780,9 @@ minor = 0
 ```
 
 MKDEV 的作用就是把分开的主设备号和次设备号组合成一个完整的 dev\_t 设备号。
+
+### 函数
+
 
 #### register_chrdev
 
@@ -9825,10 +9907,260 @@ static void demo(void)
 
 这里的 major 不是凭空出现的，而是前面的 register\_chrdev 注册成功后得到的主设备号。
 
+#### imajor
+
+```c
+/**
+ * @brief  从 inode 中取得主设备号
+ *
+ * @param  inode: 设备文件对应的 inode
+ *
+ * @retval 主设备号
+ */
+#include <linux/fs.h>
+
+static inline unsigned imajor(const struct inode *inode);
+```
+
+imajor() 用于直接从 struct inode 中取得设备文件的**主设备号**。
+
+其内部本质上是：
+
+```c
+return MAJOR(inode->i_rdev);
+```
+
+例如在 open() 回调中：
+
+```c
+static int led_open(struct inode *inode, struct file *file)
+{
+    unsigned int major;
+
+    major = imajor(inode);
+
+    return 0;
+}
+```
+
+#### iminor
+
+```c
+/**
+ * @brief  从 inode 中取得次设备号
+ *
+ * @param  inode: 设备文件对应的 inode
+ *
+ * @retval 次设备号
+ */
+#include <linux/fs.h>
+
+static inline unsigned iminor(const struct inode *inode);
+```
+
+iminor() 用于直接从 struct inode 中取得设备文件的**次设备号**。
+
+其内部本质上是：
+
+```c
+return MINOR(inode->i_rdev);
+```
+
+在 open() 回调中可以直接取得当前打开的是哪个子设备：
+
+```c
+static int led_open(struct inode *inode, struct file *file)
+{
+    unsigned int minor;
+
+    minor = iminor(inode);
+
+    return 0;
+}
+```
+
+例如：
+
+```text
+/dev/led0 → minor = 0
+/dev/led1 → minor = 1
+```
+#### file_inode
+
+```c
+/**
+ * @brief  从 struct file 中取得对应的 struct inode
+ *
+ * @param  file: 文件对象
+ *
+ * @retval 对应的 struct inode 指针
+ */
+#include <linux/fs.h>
+
+static inline struct inode *file_inode(const struct file *file);
+```
+
+file_inode() 用于从 struct file 中取得对应的 struct inode。
+
+在 write()、read() 等只有 struct file 参数的回调中，可以配合 iminor() 或 imajor() 获取设备号。
+
+```c
+static ssize_t led_write(struct file *file,
+                         const char __user *buf,
+                         size_t count,
+                         loff_t *ppos)
+{
+    unsigned int minor;
+
+    minor = iminor(file_inode(file));
+
+    /* 根据 minor 判断要控制哪个子设备 */
+
+    return count;
+}
+```
+
+常见关系：
+
+```text
+struct file
+    ↓ file_inode()
+struct inode
+    ↓ iminor() / imajor()
+次设备号 / 主设备号
+```
+
 ## 9.5 Linux 设备模型
 
 整理 Linux 设备模型中 class 和 device 的创建、管理与销毁接口，用于组织设备并建立对应的设备对象。
 
+### 数据类型
+
+#### struct class
+
+```c
+#include <linux/device.h>
+
+/* Linux 4.9，仅列出当前学习阶段相关成员 */
+struct class {
+    const char *name;        /* class 名称 */
+    struct module *owner;    /* 所属内核模块 */
+
+    /* 还有其他成员 */
+};
+```
+
+struct class 表示 Linux 设备模型中的一个**设备类别**，用于把功能相近的设备组织在一起。
+
+例如：
+
+```c
+struct class *hello_class;
+
+hello_class = class_create(THIS_MODULE, "myhello_class");
+```
+
+创建成功后，hello_class 指向这个 class 对象，通常可以在：
+
+```text
+/sys/class/myhello_class/
+```
+
+看到对应的设备类别。
+
+之后创建具体设备时，可以把设备加入这个 class：
+
+```c
+struct device *hello_dev;
+int major = 240;
+
+hello_dev = device_create(hello_class,
+                          NULL,
+                          MKDEV(major, 0),
+                          NULL,
+                          "myhello");
+```
+
+关系可以理解为：
+
+```text
+struct class
+→ 表示“一类设备”
+
+myhello_class
+└── myhello
+```
+
+#### struct device
+
+```c
+#include <linux/device.h>
+
+/* Linux 4.9，仅列出当前学习阶段相关成员 */
+struct device {
+    struct device *parent;           /* 父设备 */
+    struct kobject kobj;             /* 内核对象 */
+    const char *init_name;           /* 初始设备名 */
+
+    struct bus_type *bus;            /* 所属总线 */
+    struct device_driver *driver;    /* 绑定的驱动 */
+
+    void *driver_data;               /* 驱动私有数据 */
+
+    struct device_node *of_node;     /* 对应的设备树节点 */
+
+    dev_t devt;                      /* 设备号 */
+    struct class *class;             /* 所属 class */
+
+    /* 还有其他成员 */
+};
+```
+
+struct device 表示 Linux 设备模型中的一个**具体设备对象**。
+
+它可以保存这个设备的设备号、所属 class、父设备、总线、驱动以及设备树节点等信息。
+
+例如：
+
+```c
+struct class *hello_class;
+struct device *hello_dev;
+int major = 240;
+dev_t devno = MKDEV(major, 0);
+
+hello_class = class_create(THIS_MODULE, "myhello_class");
+
+hello_dev = device_create(hello_class,
+                          NULL,
+                          devno,
+                          NULL,
+                          "myhello");
+```
+
+这里：
+
+```text
+hello_class
+→ 指向“myhello_class”这一类设备
+
+hello_dev
+→ 指向“myhello”这个具体设备对象
+
+devno
+→ 这个设备使用的设备号 240:0
+```
+
+可以简单理解为：
+
+```text
+struct class
+→ 一类设备
+
+struct device
+→ 这一类中的某一个具体设备
+```
+
+struct device 是**内核中的设备对象**，不是 `/dev/myhello` 设备文件本身。
 ### 函数
 
 #### class_create
@@ -9880,8 +10212,6 @@ static int  __init hello_init(void)
         return err;    
     }
 
-    device_create(hello_class, NULL, MKDEV(major, 0), NULL, "hello");
-
     return 0;
 
 }
@@ -9911,17 +10241,19 @@ void class_destroy(struct class *cls);
 #include <linux/err.h>
 #include <linux/module.h>
 
-static void demo(void)
+static int demo(void)
 {
     struct class *demo_class;
 
     demo_class = class_create(THIS_MODULE, "demo_class");
 
     if (IS_ERR(demo_class))
-        return;
+        return PTR_ERR(led_class);
 
     /* demo_class 确实来自前面的 class_create */
     class_destroy(demo_class);
+    
+    return 0;
 }
 
 ```
@@ -9985,13 +10317,10 @@ static int demo(void)
     if (IS_ERR(demo_class))
         return PTR_ERR(demo_class);
 
-    demo_device = device_create(demo_class,
-                                NULL,
-                                devno,
-                                NULL,
-                                "demo");
+    demo_device = device_create(led_class, NULL, devno, NULL, "demo_device");
 
-    if (IS_ERR(demo_device)) {
+    if (IS_ERR(demo_device)) 
+    {
         class_destroy(demo_class);
         return PTR_ERR(demo_device);
     }
@@ -10001,24 +10330,11 @@ static int demo(void)
 
 ```
 
-这个示例中各参数来源是明确的：
-
-```text
-demo_class
-→ class_create 创建得到
-
-NULL
-→ 当前没有父设备
-
-devno
-→ 由主设备号 240、次设备号 0 通过 MKDEV 生成
-
-NULL
-→ 当前不保存额外驱动私有数据
-
-"demo"
-→ 创建的设备名称
-
+可变参数用法实例：
+```c
+//1.与printf类似：可将i的值放到设备名中
+for(int i = 0; i < LED_NUM; i++)
+	led_dev = device_create(led_class, NULL, MKDEV(major, 0), NULL, "led%d", i);
 ```
 
 #### device_destroy
@@ -10090,12 +10406,223 @@ devno
 
 这样才能明确看出 device\_create 和 device\_destroy 之间的对应关系。
 
+## 9.6 I/O 内存映射与寄存器访问
+
+Linux 驱动中，访问 GPIO、UART、I2C 等外设寄存器时，通常需要先将寄存器的物理地址映射为内核虚拟地址，再通过专用的 I/O 访问接口读写寄存器。本节整理外设寄存器地址映射和访问相关内容。
+
+### 宏
+#### __iomem
+
+```c
+#include <linux/compiler.h>
+
+#ifdef __CHECKER__
+#define __iomem __attribute__((noderef, address_space(2)))
+#else
+#define __iomem
+#endif
+```
+
+__iomem 是 Linux 内核用于标记 I/O 内存指针的注解宏，表示该指针指向外设寄存器等 I/O 内存区域，而不是普通 RAM。
+
+它主要用于帮助 sparse 等静态检查工具区分普通内存指针和 I/O 内存指针，本身不会建立地址映射，也不会读写寄存器。
+
+```c
+void __iomem *gpio5_dr;
+```
+
+表示 gpio5_dr 是一个指向 I/O 内存区域的指针。
+
+### 函数
+
+#### ioremap
+
+```c
+/**
+ * @brief 将外设寄存器的物理地址映射为内核可访问的虚拟地址
+ * @param phys_addr 要映射的物理起始地址
+ * @param size      要映射的地址空间大小，单位为字节
+ * @retval 成功 返回映射后的内核虚拟地址
+ * @retval 失败 返回 NULL
+ */
+#include <linux/io.h>
+
+void __iomem *ioremap(phys_addr_t phys_addr, size_t size);
+```
+
+ioremap() 主要用于 Linux 内核驱动中访问外设寄存器。
+
+芯片手册中查到的寄存器地址通常是物理地址，驱动中需要先通过 ioremap() 将其映射为内核虚拟地址，再通过映射后的地址访问寄存器。
+
+```c
+void __iomem *gpio5_dr;
+
+gpio5_dr = ioremap(0x020AC000, 4);
+if (!gpio5_dr)
+    return -ENOMEM;
+```
+
+映射成功后，gpio5_dr 指向 GPIO5_DR 对应的内核虚拟地址。
+
+映射得到的地址在不再使用时，应使用 iounmap() 释放。
+
+#### iounmap
+
+```c
+/**
+ * @brief 取消由 ioremap() 建立的 I/O 内存映射
+ * @param addr ioremap() 返回的内核虚拟地址
+ */
+#include <linux/io.h>
+
+void iounmap(volatile void __iomem *addr);
+```
+
+iounmap() 用于释放通过 ioremap() 建立的映射关系，通常在驱动退出或初始化失败时调用。
+
+```c
+void __iomem *gpio5_dr;
+
+gpio5_dr = ioremap(0x020AC000, 4);
+if (!gpio5_dr)
+    return -ENOMEM;
+
+/* 使用 gpio5_dr 访问寄存器 */
+
+iounmap(gpio5_dr);
+```
+
+ioremap() 和 iounmap() 通常成对使用：
+
+```text
+物理地址
+   ↓
+ioremap()
+   ↓
+内核虚拟地址
+   ↓
+访问硬件寄存器
+   ↓
+iounmap()
+```
+
+#### readl
+
+```c
+/**
+ * @brief  从 I/O 内存地址读取一个 32 位数据。
+ *
+ * @param  addr: 要读取的 I/O 内存地址。
+ *
+ * @retval 读取到的 32 位数据。
+ */
+#include <linux/io.h>
+
+/* ARM Linux 4.9 中本质为函数式宏 */
+readl(addr)
+```
+
+readl 通常用于读取经过 ioremap() 映射后的 32 位外设寄存器。
+
+```c
+void __iomem *gpio5_gdir;
+u32 value;
+
+gpio5_gdir = ioremap(0x020AC004, 4);
+if (!gpio5_gdir)
+    return -ENOMEM;
+
+value = readl(gpio5_gdir);
+
+iounmap(gpio5_gdir);
+```
+
+#### writel
+
+```c
+/**
+ * @brief  向 I/O 内存地址写入一个 32 位数据。
+ *
+ * @param  value: 要写入的 32 位数据。
+ * @param  addr:  要写入的 I/O 内存地址。
+ */
+#include <linux/io.h>
+
+/* ARM Linux 4.9 中本质为函数式宏 */
+writel(value, addr)
+```
+
+writel 通常用于向经过 ioremap() 映射后的 32 位外设寄存器写入数据。
+
+修改寄存器中的某一位时，通常先使用 readl() 读取原值，再按位修改，最后使用 writel() 写回，避免影响其他位。
+
+```c
+void __iomem *gpio5_gdir;
+u32 value;
+
+gpio5_gdir = ioremap(0x020AC004, 4);
+if (!gpio5_gdir)
+    return -ENOMEM;
+
+value = readl(gpio5_gdir);
+value |= (1 << 3);
+writel(value, gpio5_gdir);
+
+iounmap(gpio5_gdir);
+```
+
+#  寄存器
+## CCM_CCGR1
+
+CCM 的时钟门控寄存器之一，用于控制多个外设模块的时钟开启和关闭，以实现时钟管理和降低功耗。
+
+CCGR 中每个 CG 字段占 2 bit，取值含义相同：
+
+|值|含义|
+|---|---|
+|00|所有模式下关闭时钟，同时禁止进入 STOP 时的硬件握手|
+|01|RUN 模式下开启时钟，WAIT 和 STOP 模式下关闭|
+|10|保留|
+|11|除 STOP 模式外，其余模式均开启时钟|
+
+![[CCM_CCGR1.png]]
+
+## IOMUXC_SNVS_SW_MUX_CTL_PAD_SNVS_TAMPER3
+
+IOMUXC_SNVS 的引脚复用控制寄存器，用于选择 SNVS_TAMPER3 引脚所使用的复用功能，并可控制该引脚的输入通路。
+![[IOMUXC_SNVS_SW_MUX_CTL_PAD_SNVS_TAMPER3.png]]
+
+## GPIO5_DR
+GPIO5 的数据寄存器，用于保存 GPIO 输出数据；在 GPIO 配置为输入时，读取该寄存器也可能反映对应输入信号的状态。
+![[GPIO5_DR.png]]
+
+## **GPIO5_GDIR**  
+GPIO5 的方向控制寄存器，用于设置各 GPIO 引脚是作为输入还是输出。寄存器中的每一位对应一个 GPIO 信号。
+![[GPIO5_GDIR.png]]
+
+# 常见硬件手册缩写
+
+| 缩写     | 英文全称                        | 含义                      |
+| ------ | --------------------------- | ----------------------- |
+| IOMUXC | I/O Multiplexer Controller  | 输入输出复用控制器，用于管理引脚的功能复用   |
+| SNVS   | Secure Non-Volatile Storage | 安全非易失存储相关模块             |
+| SW     | Software                    | 软件、由软件配置                |
+| MUX    | Multiplexer                 | 多路选择，用于从多个功能中选择一个       |
+| CTL    | Control                     | 控制                      |
+| PAD    | Pad                         | 芯片对外的物理引脚/焊盘            |
+| ALT    | Alternate                   | 备选功能、复用功能编号，如 ALT0、ALT5 |
+| SION   | Software Input On           | 软件强制开启输入通路              |
+
 
 # 相关文件
+
 [[系统修改与环境配置记录]]
-[[嵌入式Linux应用开发完全手册V5.3_IMX6ULL_Pro开发板.pdf]]
-[[c_c++]]
 [[更改说明]]
+
+[[嵌入式Linux应用开发完全手册V5.3_IMX6ULL_Pro开发板.pdf]]
+[[IMX6ULLRM.pdf]]
+[[100ask_imx6ull原理图.pdf]]
+
 # # 
 
 # # 
