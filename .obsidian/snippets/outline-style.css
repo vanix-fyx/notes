@@ -1,0 +1,41 @@
+/* Quiet Outline：通过字号 + 颜色区分层级，不明显加粗 */
+
+/* 一级标题 */
+.level-1 {
+    font-size: 15px !important;
+    font-weight: 450 !important;
+    color: var(--text-normal) !important;
+}
+/* 二级标题 */
+.level-2 {
+    font-size: 14.5px !important;
+    font-weight: 450 !important;
+    color: var(--text-normal) !important;
+}
+/* 三级标题 */
+.level-3 {
+    font-size: 14px !important;
+    font-weight: 400 !important;
+    color: color-mix(in srgb, var(--text-normal) 85%, transparent) !important;
+}
+
+/* 四级标题 */
+.level-4 {
+    font-size: 13.5px !important;
+    font-weight: 400 !important;
+    color: color-mix(in srgb, var(--text-normal) 75%, transparent) !important;
+}
+
+/* 五级标题 */
+.level-5 {
+    font-size: 13px !important;
+    font-weight: 400 !important;
+    color: color-mix(in srgb, var(--text-normal) 68%, transparent) !important;
+}
+
+/* 六级标题 */
+.level-6 {
+    font-size: 12.5px !important;
+    font-weight: 400 !important;
+    color: color-mix(in srgb, var(--text-normal) 60%, transparent) !important;
+}

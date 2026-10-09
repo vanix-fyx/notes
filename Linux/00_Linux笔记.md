@@ -767,7 +767,11 @@ cols 表示列数。
 
 该设置只对当前终端生效，关闭终端后通常会失效。
 ```
+### 加载终端配置，将白色变为彩色
 
+```
+source ~/.bashrc
+```
 ## 1.7 adb实现板子与虚拟机交互的命令
 
 ### adb : Android Debug Bridge，用于虚拟机和开发板交互
@@ -8975,7 +8979,7 @@ if (ret < 0)
 ```
 # 9 Linux 驱动开发
 
-## 9.1 写驱动设备流程
+## 9.1 **写驱动设备流程**
 
 记录字符设备驱动源码从准备、实现文件操作，到注册设备、释放资源以及指定模块入口和出口的基本编写顺序。
 
@@ -9009,7 +9013,7 @@ if (ret < 0)
 
 ```
 
-## 9.2 内核基础
+## 9.2 **内核基础**
 
 整理驱动开发中最基础的内核模块、初始化与退出标记以及内核日志相关内容。
 
@@ -9207,7 +9211,7 @@ hello: major = 100
 
 内核日志可以通过 dmesg 等方式查看。
 
-## 9.3 内核通用机制
+## 9.3 **内核通用机制**
 
 整理与具体设备类型无关、在不同驱动中都可能使用的通用内核机制，例如用户空间与内核空间的数据交互和错误处理。
 
@@ -9480,11 +9484,91 @@ static int create_demo_class(void)
 
 不能仅通过 demo\_class 是否等于 NULL 来判断 class\_create 是否失败。
 
-## 9.4 文件与设备
+## 9.4 **文件与字符设备**
 
 整理字符设备驱动所依赖的 VFS 文件操作接口、设备号以及设备注册和注销相关内容。
 
+### 宏
+#### MAJOR
+
+```c
+#include <linux/kdev_t.h>
+
+#define MAJOR(dev) ((unsigned int)((dev) >> MINORBITS))
+```
+
+MAJOR() 是函数式宏，用于从完整设备号 dev_t 中取得**主设备号**。
+
+```c
+dev_t dev = MKDEV(major, minor);
+unsigned int major_num;
+
+major_num = MAJOR(dev);
+```
+#### MINOR
+
+```c
+#include <linux/kdev_t.h>
+
+#define MINOR(dev) ((unsigned int)((dev) & MINORMASK))
+```
+
+MINOR() 是函数式宏，用于从完整设备号 dev_t 中取得**次设备号**。
+
+```c
+dev_t dev = MKDEV(major, minor);
+unsigned int minor_num;
+
+minor_num = MINOR(dev);
+```
+#### MKDEV
+
+```c
+/**
+ * @brief  根据主设备号和次设备号生成完整的设备号。
+ *
+ * @param  ma: 主设备号。
+ *
+ * @param  mi: 次设备号。
+ *
+ * @retval 返回组合后的 dev_t 类型设备号。
+ */
+#include <linux/kdev_t.h>
+
+MKDEV(ma, mi);
+
+```
+
+类型：函数式宏。
+
+```c
+unsigned int major = 240;
+unsigned int minor = 0;
+dev_t devno;
+
+devno = MKDEV(major, minor);
+
+```
+
+这里：
+
+```text
+major = 240
+minor = 0
+
+```
+
+所以 devno 表示的就是设备号：
+
+```text
+240:0
+
+```
+
+MKDEV 的作用就是把分开的主设备号和次设备号组合成一个完整的 dev\_t 设备号。
+
 ### 数据类型
+
 
 #### struct file_operations
 
@@ -9537,18 +9621,27 @@ static int demo_open(struct inode *inode, struct file *file)
     return 0;
 }
 
-static ssize_t demo_read(struct file *file,
-                         char __user *buf,
-                         size_t size,
-                         loff_t *offset)
+static ssize_t demo_read(struct file *file, char __user *buf, size_t size, loff_t *offset)
 {
     return 0;
+}
+
+static ssize_t demo_write (struct file *file, const char __user *buf, size_t size, loff_t *offset)
+{
+	return 0;
+}
+
+static int demo_close (struct inode *node, struct file *file)
+{
+	return 0;
 }
 
 static const struct file_operations demo_fops = {
     .owner = THIS_MODULE,
     .open  = demo_open,
     .read  = demo_read,
+    .write = demo_write,
+    .release = demo_release,
 };
 
 ```
@@ -9702,84 +9795,47 @@ dev_t dev;
 dev = MKDEV(major, minor);
 ```
 
-### 宏
-#### MAJOR
+#### struct cdev
 
 ```c
-#include <linux/kdev_t.h>
+#include <linux/cdev.h>
 
-#define MAJOR(dev) ((unsigned int)((dev) >> MINORBITS))
+/* Linux 4.9，仅列出当前学习阶段相关成员 */
+struct cdev {
+    struct module *owner;                 /* 所属模块 */
+    const struct file_operations *ops;    /* 文件操作函数 */
+    
+    /* 还有其他成员 */
+};
 ```
 
-MAJOR() 是函数式宏，用于从完整设备号 dev_t 中取得**主设备号**。
+struct cdev 表示 Linux 内核中的**字符设备对象**。
+
+它用于将设备号和 file_operations 关联起来，使用户空间对设备文件的操作能够调用驱动中的对应函数。
+
+例如：
 
 ```c
-dev_t dev = MKDEV(major, minor);
-unsigned int major_num;
+struct cdev led_cdev;
 
-major_num = MAJOR(dev);
+cdev_init(&led_cdev, &led_fops);
+
+cdev_add(&led_cdev, devno, 1);
 ```
-#### MINOR
+
+关系：
 
 ```c
-#include <linux/kdev_t.h>
-
-#define MINOR(dev) ((unsigned int)((dev) & MINORMASK))
+设备号(dev_t)
+      ↓
+struct cdev
+      ↓
+struct file_operations
+      ↓
+open/read/write 等操作函数
 ```
 
-MINOR() 是函数式宏，用于从完整设备号 dev_t 中取得**次设备号**。
 
-```c
-dev_t dev = MKDEV(major, minor);
-unsigned int minor_num;
-
-minor_num = MINOR(dev);
-```
-#### MKDEV
-
-```c
-/**
- * @brief  根据主设备号和次设备号生成完整的设备号。
- *
- * @param  ma: 主设备号。
- *
- * @param  mi: 次设备号。
- *
- * @retval 返回组合后的 dev_t 类型设备号。
- */
-#include <linux/kdev_t.h>
-
-MKDEV(ma, mi);
-
-```
-
-类型：函数式宏。
-
-```c
-unsigned int major = 240;
-unsigned int minor = 0;
-dev_t devno;
-
-devno = MKDEV(major, minor);
-
-```
-
-这里：
-
-```text
-major = 240
-minor = 0
-
-```
-
-所以 devno 表示的就是设备号：
-
-```text
-240:0
-
-```
-
-MKDEV 的作用就是把分开的主设备号和次设备号组合成一个完整的 dev\_t 设备号。
 
 ### 函数
 
@@ -9907,6 +9963,217 @@ static void demo(void)
 
 这里的 major 不是凭空出现的，而是前面的 register\_chrdev 注册成功后得到的主设备号。
 
+#### register_chrdev_region
+
+```c
+/**
+ * @brief  使用指定的设备号注册字符设备号。
+ *
+ * @param  from: 起始设备号，包含主设备号和次设备号。
+ * @param  count: 连续注册的设备数量。
+ * @param  name: 设备名称。
+ *
+ * @retval 0: 注册成功。
+ * @retval 负值: 注册失败。
+ */
+
+#include <linux/fs.h>
+
+int register_chrdev_region(dev_t from,
+                           unsigned count,
+                           const char *name);
+```
+
+register_chrdev_region 用于向内核注册指定范围的字符设备号。
+
+使用该函数前，需要先通过 MKDEV() 生成设备号：
+
+```
+dev_t devno;
+
+devno = MKDEV(240, 0);
+
+register_chrdev_region(devno,
+                       1,
+                       "mydev");
+```
+
+表示注册：
+
+```
+主设备号：240
+次设备号：0
+数量：1
+设备名称：mydev
+```
+
+注册成功后，该设备号可以继续用于字符设备注册：
+
+```
+register_chrdev_region()
+
+        ↓
+
+cdev_init()
+
+        ↓
+
+cdev_add()
+```
+
+与 alloc_chrdev_region() 的区别：
+
+```
+register_chrdev_region()
+→ 使用指定的设备号
+
+alloc_chrdev_region()
+→ 由内核自动分配设备号
+```
+#### alloc_chrdev_region
+
+```c
+/**
+ * @brief  动态申请字符设备号。
+ *
+ * @param  dev: 返回申请到的设备号。
+ * @param  baseminor: 起始次设备号。
+ * @param  count: 申请的设备数量。
+ * @param  name: 设备名称。
+ *
+ * @retval 0: 申请成功。
+ * @retval 负值: 申请失败。
+ */
+
+#include <linux/fs.h>
+
+int alloc_chrdev_region(dev_t *dev,
+                        unsigned baseminor,
+                        unsigned count,
+                        const char *name);
+```
+
+alloc_chrdev_region 用于动态申请字符设备号。
+
+与 register_chrdev() 不同：
+
+```
+alloc_chrdev_region()
+→ 只负责申请设备号
+
+cdev_init()
+→ 初始化字符设备
+
+cdev_add()
+→ 注册字符设备
+```
+
+示例：
+
+```c
+dev_t devno;
+
+alloc_chrdev_region(&devno,
+                    0,
+                    1,
+                    "mydev");
+```
+
+#### cdev_init
+
+```c
+/**
+ * @brief  初始化字符设备对象，并绑定文件操作函数。
+ *
+ * @param  cdev: 需要初始化的字符设备对象。
+ * @param  fops: 文件操作函数表。
+ *
+ * @retval 无返回值。
+ */
+
+#include <linux/cdev.h>
+
+void cdev_init(struct cdev *cdev,
+               const struct file_operations *fops);
+```
+
+cdev_init 用于初始化 struct cdev，并将字符设备与 file_operations 关联。
+
+示例：
+
+```c
+struct cdev my_cdev;
+
+cdev_init(&my_cdev, &my_fops);
+```
+
+#### cdev_add
+
+```c
+/**
+ * @brief  将字符设备添加到内核。
+ *
+ * @param  cdev: 已初始化的字符设备对象。
+ * @param  dev: 设备号。
+ * @param  count: 连续设备号数量。
+ *
+ * @retval 0: 添加成功。
+ * @retval 负值: 添加失败。
+ */
+
+#include <linux/cdev.h>
+
+int cdev_add(struct cdev *cdev,
+             dev_t dev,
+             unsigned count);
+```
+
+cdev_add 用于将初始化后的字符设备注册到内核。
+
+示例：
+
+```
+cdev_add(&my_cdev, devno, 1);
+```
+
+#### cdev_del
+
+```c
+/**
+ * @brief  从内核中删除字符设备。
+ *
+ * @param  cdev: 需要删除的字符设备对象。
+ *
+ * @retval 无返回值。
+ */
+
+#include <linux/cdev.h>
+
+void cdev_del(struct cdev *cdev);
+```
+
+cdev_del 用于删除已经通过 cdev_add 注册的字符设备。
+
+#### unregister_chrdev_region
+
+```c
+/**
+ * @brief  释放已经申请的字符设备号。
+ *
+ * @param  from: 起始设备号。
+ * @param  count: 需要释放的设备数量。
+ *
+ * @retval 无返回值。
+ */
+
+#include <linux/fs.h>
+
+void unregister_chrdev_region(dev_t from,
+                              unsigned count);
+```
+
+unregister_chrdev_region 用于释放 alloc_chrdev_region() 申请的设备号。
+
 #### imajor
 
 ```c
@@ -10030,7 +10297,7 @@ struct inode
 次设备号 / 主设备号
 ```
 
-## 9.5 Linux 设备模型
+## 9.5 **Linux 设备模型**
 
 整理 Linux 设备模型中 class 和 device 的创建、管理与销毁接口，用于组织设备并建立对应的设备对象。
 
@@ -10091,7 +10358,12 @@ myhello_class
 └── myhello
 ```
 
+
 #### struct device
+
+struct device 表示 Linux 设备模型中的一个具体设备对象，是内核描述设备时使用的通用结构体。
+
+很多更具体的设备结构体都会在内部包含一个 struct device，用它接入 Linux 统一的设备模型。
 
 ```c
 #include <linux/device.h>
@@ -10102,65 +10374,110 @@ struct device {
     struct kobject kobj;             /* 内核对象 */
     const char *init_name;           /* 初始设备名 */
 
-    struct bus_type *bus;            /* 所属总线 */
-    struct device_driver *driver;    /* 绑定的驱动 */
+    struct bus_type *bus;            /* 设备所属的总线 */
+    struct device_driver *driver;    /* 当前绑定的驱动 */
 
-    void *driver_data;               /* 驱动私有数据 */
+    void *platform_data;             /* 设备提供的平台相关数据 */
+    void *driver_data;               /* 驱动保存的私有数据 */
 
     struct device_node *of_node;     /* 对应的设备树节点 */
 
     dev_t devt;                      /* 设备号 */
-    struct class *class;             /* 所属 class */
+    struct class *class;             /* 所属设备类 */
+
+    void (*release)(struct device *dev); /* 设备最终释放时调用 */
 
     /* 还有其他成员 */
 };
 ```
 
-struct device 表示 Linux 设备模型中的一个**具体设备对象**。
+| 成员            | 说明                            |
+| ------------- | ----------------------------- |
+| parent        | 指向该设备的父设备                     |
+| kobj          | 内核对象，用于接入 kobject / sysfs 等机制 |
+| init_name     | 设备的初始名称                       |
+| bus           | 指向设备所属的总线，例如 platform 总线      |
+| driver        | 指向当前已经与该设备匹配并绑定的驱动            |
+| platform_data | 保存设备或板级代码提供的平台相关数据，供驱动使用      |
+| driver_data   | 保存驱动自己与该设备相关的私有数据             |
+| of_node       | 指向该设备对应的设备树节点                 |
+| devt          | 设备号，常用于字符设备或块设备               |
+| class         | 指向设备所属的 class                 |
+| release       | 当设备对象的引用计数最终降为 0 时调用的释放回调     |
 
-它可以保存这个设备的设备号、所属 class、父设备、总线、驱动以及设备树节点等信息。
+platform_data 和 driver_data 要注意区分：
 
-例如：
+```
+platform_data
+→ 设备一侧提供给驱动的数据
 
-```c
-struct class *hello_class;
-struct device *hello_dev;
-int major = 240;
-dev_t devno = MKDEV(major, 0);
-
-hello_class = class_create(THIS_MODULE, "myhello_class");
-
-hello_dev = device_create(hello_class,
-                          NULL,
-                          devno,
-                          NULL,
-                          "myhello");
+driver_data
+→ 驱动绑定设备后，驱动自己保存的数据
 ```
 
-这里：
+bus 和 driver 描述设备在驱动模型中的关系：
 
-```text
-hello_class
-→ 指向“myhello_class”这一类设备
+```
+struct device
+    │
+    ├── bus
+    │    → 这个设备属于哪条总线
+    │
+    └── driver
+         → 当前由哪个驱动负责
+```
 
-hello_dev
-→ 指向“myhello”这个具体设备对象
+release 是设备生命周期中的释放回调：
 
-devno
-→ 这个设备使用的设备号 240:0
+```
+static void demo_release(struct device *dev)
+{
+    /* 设备对象最终释放时需要完成的清理工作 */
+}
+```
+
+更高层的设备结构体中常常会包含 struct device，例如：
+
+```
+struct platform_device {
+    const char *name;
+    int id;
+
+    struct device dev;
+
+    /* 其他成员 */
+};
+```
+
+因此可以通过内部的 dev 成员设置通用设备信息：
+
+```
+static void demo_release(struct device *dev)
+{
+}
+
+static struct platform_device demo_device = {
+    .name = "demo_device",
+
+    .dev = {
+        .release = demo_release,
+    },
+};
 ```
 
 可以简单理解为：
 
-```text
-struct class
-→ 一类设备
-
+```
 struct device
-→ 这一类中的某一个具体设备
+→ Linux 设备模型中的通用设备对象
+
+struct platform_device
+→ platform 设备对象
+   内部包含一个 struct device
 ```
 
-struct device 是**内核中的设备对象**，不是 `/dev/myhello` 设备文件本身。
+struct device 是内核中的设备对象，不是 `/dev/xxx` 设备文件本身。
+
 ### 函数
 
 #### class_create
@@ -10406,7 +10723,7 @@ devno
 
 这样才能明确看出 device\_create 和 device\_destroy 之间的对应关系。
 
-## 9.6 I/O 内存映射与寄存器访问
+## 9.6 **I/O 内存映射与寄存器访问**
 
 Linux 驱动中，访问 GPIO、UART、I2C 等外设寄存器时，通常需要先将寄存器的物理地址映射为内核虚拟地址，再通过专用的 I/O 访问接口读写寄存器。本节整理外设寄存器地址映射和访问相关内容。
 
@@ -10571,8 +10888,1612 @@ writel(value, gpio5_gdir);
 iounmap(gpio5_gdir);
 ```
 
-#  寄存器
-## CCM_CCGR1
+## 9.7 **总线设备驱动模型**
+
+### 宏
+#### IORESOURCE_*
+
+IORESOURCE_* 是 Linux 内核用于标识 struct resource **资源类型和属性**的一组宏，通常保存在 struct resource 的 flags 成员中。
+
+```c
+#include <linux/ioport.h>
+
+#define IORESOURCE_IO   0x00000100  /* I/O 端口地址空间资源。
+                                       这里的 I/O 指 I/O Port，
+                                       不是 GPIO 中的 Input/Output，
+                                       不能因为设备是 GPIO 就使用该类型。 */
+
+#define IORESOURCE_MEM  0x00000200  /* 内存地址资源，常用于描述 MMIO 寄存器物理地址范围 */
+
+#define IORESOURCE_REG  0x00000300  /* 寄存器偏移资源 */
+
+#define IORESOURCE_IRQ  0x00000400  /* 中断资源，start/end 表示 IRQ 编号或编号范围 */
+
+#define IORESOURCE_DMA  0x00000800  /* DMA 资源，start/end 表示 DMA 通道编号或范围 */
+
+#define IORESOURCE_BUS  0x00001000  /* 总线编号资源 */
+```
+
+这些宏决定 struct resource 中 start 和 end 的含义：
+
+```
+IORESOURCE_IO
+→ start / end 表示 I/O Port 地址范围
+
+IORESOURCE_MEM
+→ start / end 表示内存物理地址范围
+
+IORESOURCE_IRQ
+→ start / end 表示 IRQ 编号范围
+
+IORESOURCE_DMA
+→ start / end 表示 DMA 通道编号范围
+```
+
+例如，描述一段内存映射寄存器资源：
+
+```c
+static struct resource mem_resource = {
+    .start = 0x10000000,
+    .end   = 0x10000FFF,
+    .flags = IORESOURCE_MEM,
+};
+```
+
+描述一个中断资源：
+
+```
+static struct resource irq_resource = {
+    .start = 32,
+    .end   = 32,
+    .flags = IORESOURCE_IRQ,
+};
+```
+
+因此，不能脱离 flags 单独判断 start 和 end 是地址、IRQ 号还是其他资源编号。
+
+#### ARRAY_SIZE
+
+ARRAY_SIZE 是 Linux 内核提供的函数式宏，用于计算**静态数组中元素的个数**。
+
+```c
+#include <linux/kernel.h>
+
+#define ARRAY_SIZE(arr) \
+        (sizeof(arr) / sizeof((arr)[0]) + __must_be_array(arr))
+```
+
+参数：
+
+```
+arr
+→ 需要计算元素个数的数组
+```
+
+例如：
+
+```
+int data[] = {10, 20, 30, 40};
+
+int count = ARRAY_SIZE(data);
+```
+
+得到：
+
+```
+count = 4
+```
+
+基本原理相当于：
+
+```
+sizeof(data) / sizeof(data[0])
+```
+
+即：
+
+```
+整个数组占用的字节数
+÷
+一个数组元素占用的字节数
+=
+数组元素个数
+```
+
+Linux 内核中的 ARRAY_SIZE 还通过 __must_be_array(arr) 检查传入对象是否为数组，用于避免误把普通指针当成数组计算。
+
+因此应当用于：
+
+```
+int data[10];
+
+ARRAY_SIZE(data);
+```
+
+而不要用于：
+
+```
+int *data;
+
+ARRAY_SIZE(data);    /* data 是指针，不是数组 */
+```
+
+ARRAY_SIZE 计算的是数组元素数量，而不是数组占用的字节数。
+
+#### EXPORT_SYMBOL
+
+EXPORT_SYMBOL 是 Linux 内核提供的宏，用于将内核中的函数或全局变量**导出为符号**，使其他内核模块可以引用它。
+
+```c
+#include <linux/export.h>
+
+#define EXPORT_SYMBOL(sym) \
+        __EXPORT_SYMBOL(sym, "")
+```
+
+参数：
+
+```
+sym
+→ 需要导出的函数名或全局变量名
+```
+
+例如，在一个内核模块中定义并导出函数：
+
+```c
+#include <linux/module.h>
+#include <linux/export.h>
+
+int demo_add(int a, int b)
+{
+    return a + b;
+}
+
+EXPORT_SYMBOL(demo_add);
+```
+
+其他内核模块只要能够获得该函数的声明，就可以调用：
+
+```c
+extern int demo_add(int a, int b);
+
+int result = demo_add(10, 20);
+```
+
+可以简单理解为：
+
+```
+模块 A
+    │
+    ├── 定义 demo_add()
+    │
+    └── EXPORT_SYMBOL(demo_add)
+                 ↓
+          导出到内核符号表
+                 ↓
+模块 B
+    │
+    └── 可以引用 demo_add()
+```
+
+EXPORT_SYMBOL 只负责**导出符号**，不会自动提供函数声明。
+
+因此通常还需要在公共头文件中写函数声明，例如：
+
+```c
+/* demo.h */
+int demo_add(int a, int b);
+```
+
+其他模块再通过：
+
+```c
+#include "demo.h"
+```
+
+获得函数声明。
+
+Linux 还提供：
+
+```c
+EXPORT_SYMBOL_GPL(sym);
+```
+
+它同样用于导出符号，但只允许声明为 GPL 兼容许可证的内核模块使用。
+
+可以简单区分为：
+
+```
+EXPORT_SYMBOL
+→ 普通导出符号
+
+EXPORT_SYMBOL_GPL
+→ 仅向 GPL 兼容模块导出符号
+```
+
+### 数据类型
+
+#### struct resource
+
+struct resource 是 Linux 内核中用于描述系统资源的结构体，可用于描述内存地址范围、I/O 端口、IRQ、DMA 等资源。
+
+```c
+#include <linux/ioport.h>
+
+struct resource {
+    resource_size_t start;
+    resource_size_t end;
+    const char *name;
+    unsigned long flags;
+    unsigned long desc;
+    struct resource *parent, *sibling, *child;
+};
+```
+
+|成员|说明|
+|---|---|
+|start|资源的起始值或起始地址|
+|end|资源的结束值或结束地址|
+|name|资源名称|
+|flags|资源类型及属性|
+|desc|资源的附加描述类型|
+|parent|指向父资源|
+|sibling|指向同级的下一个资源|
+|child|指向子资源|
+
+常见的资源类型包括：
+
+```
+IORESOURCE_IO     /* I/O 端口地址空间资源；这里的 I/O 指 I/O Port，
+                     不是 GPIO 中的 Input/Output。
+                     不能因为设备是 GPIO 就使用 IORESOURCE_IO；
+                     ARM 中 GPIO 控制器的寄存器地址通常属于 IORESOURCE_MEM。 */
+
+IORESOURCE_MEM    /* 内存地址资源 */
+IORESOURCE_IRQ    /* 中断资源 */
+IORESOURCE_DMA    /* DMA 资源 */
+```
+
+例如，描述一段寄存器物理地址资源：
+
+```
+static struct resource uart_resources[] = {
+    {
+        .start = 0x02020000,
+        .end   = 0x02020FFF,
+        .name  = "uart_regs",
+        .flags = IORESOURCE_MEM,
+    },
+};
+```
+
+这里表示一段从 0x02020000 到 0x02020FFF 的内存资源，资源类型为 IORESOURCE_MEM。
+
+也可以描述一个中断资源：
+
+```
+static struct resource irq_resource = {
+    .start = 58,
+    .end   = 58,
+    .name  = "device_irq",
+    .flags = IORESOURCE_IRQ,
+};
+```
+
+对于范围型资源，资源大小通常为：
+
+```
+size = end - start + 1;
+```
+
+
+#### struct platform_device
+
+struct platform_device 用于描述 platform 总线上的一个设备，主要保存设备名称、设备编号、硬件资源以及通用设备信息。
+
+可以把它理解为：
+
+> **描述“这个设备是谁，以及它拥有哪些硬件资源”。**
+
+```c
+#include <linux/platform_device.h>
+
+struct platform_device {
+    const char *name;
+    int id;
+    bool id_auto;
+    struct device dev;
+    u32 num_resources;
+    struct resource *resource;
+
+    const struct platform_device_id *id_entry;
+    char *driver_override;
+
+    struct mfd_cell *mfd_cell;
+
+    struct pdev_archdata archdata;
+};
+```
+
+常用成员：
+
+| 成员              | 说明                                               |
+| --------------- | ------------------------------------------------ |
+| name            | platform 设备名称，也是设备与驱动进行匹配时的重要信息                  |
+| id              | 同名 platform 设备的编号；不需要编号时通常使用 PLATFORM_DEVID_NONE |
+| dev             | Linux 通用设备模型中的 struct device，保存该设备的通用信息          |
+| num_resources   | resource 数组中资源的数量                                |
+| resource        | 指向 struct resource 数组，用于保存设备的硬件资源                |
+| id_entry        | 匹配成功后指向对应的 platform_device_id                    |
+| driver_override | 指定只与特定名称的驱动进行匹配                                  |
+
+其中最常用的关系是：
+
+```
+platform_device
+      │
+      ├── name
+      │      → 设备名称
+      │
+      ├── resource
+      │      → 硬件资源数组
+      │
+      └── num_resources
+             → resource 数量
+```
+
+例如，一个设备同时具有寄存器地址和中断资源：
+
+```c
+static void demo_release(struct device *dev)
+{
+}
+
+static struct resource demo_resources[] = {
+    {
+        .start = 0x10000000,
+        .end   = 0x10000FFF,
+        .flags = IORESOURCE_MEM,
+    },
+    {
+        .start = 32,
+        .end   = 32,
+        .flags = IORESOURCE_IRQ,
+    },
+};
+
+static struct platform_device demo_device = {
+    .name          = "demo_device",
+    .id            = PLATFORM_DEVID_NONE,
+    .num_resources = ARRAY_SIZE(demo_resources),
+    .resource      = demo_resources,
+
+    .dev = {
+        .release = demo_release,
+    },
+};
+```
+
+这个 platform_device 表示一个名为 demo_device 的设备，并携带两项硬件资源：
+
+```
+IORESOURCE_MEM
+→ 一段寄存器地址资源
+
+IORESOURCE_IRQ
+→ 一个中断资源
+```
+
+定义好 platform_device 后，还需要将它注册到内核，才能交给 platform 总线管理并参与与 platform_driver 的匹配。
+
+
+#### struct platform_driver
+
+struct platform_driver 用于描述 platform 总线上的一个驱动，主要保存设备匹配成功后的 probe、设备移除时的 remove，以及 Linux 通用驱动对象 struct device_driver。
+
+可以简单理解为：
+
+> **struct platform_device 描述“设备有什么”，struct platform_driver 描述“驱动设备的方法”。**
+
+```c
+#include <linux/platform_device.h>
+
+/* Linux 4.9，仅列出当前学习阶段相关成员 */
+struct platform_driver {
+    int (*probe)(struct platform_device *pdev);
+    int (*remove)(struct platform_device *pdev);
+    void (*shutdown)(struct platform_device *pdev);
+
+    struct device_driver driver;
+
+    const struct platform_device_id *id_table;
+
+    /* 还有其他成员 */
+};
+```
+
+| 成员       | 说明                                     |
+| -------- | -------------------------------------- |
+| probe    | platform_device 与该驱动匹配成功后，由内核自动调用      |
+| remove   | 已绑定的 platform_device 与驱动分离时调用，用于进行相应清理 |
+| shutdown | 系统关机或重启等过程中调用                          |
+| driver   | Linux 通用驱动对象，保存驱动名称、总线等通用信息            |
+| id_table | platform 设备 ID 匹配表，可以描述该驱动支持的多个设备      |
+
+最常见的定义形式：
+
+```c
+static int demo_probe(struct platform_device *pdev)
+{
+    /* 获取设备资源并初始化设备 */
+
+    return 0;
+}
+
+static int demo_remove(struct platform_device *pdev)
+{
+    /* 释放与该设备相关的资源 */
+
+    return 0;
+}
+
+static struct platform_driver demo_driver = {
+    .probe  = demo_probe,
+    .remove = demo_remove,
+
+    .driver = {
+        .name = "demo_device",
+    },
+};
+```
+
+其中：
+
+```
+probe
+→ 设备与驱动匹配成功后执行
+→ pdev 指向与当前驱动匹配的 platform_device
+
+remove
+→ 设备与驱动解除绑定时执行
+
+driver.name
+→ 驱动名称
+→ 可以参与 platform_device 与 platform_driver 的匹配
+```
+
+platform_device 和 platform_driver 都注册后，由 platform 总线负责匹配：
+
+```
+platform_device
+        │
+        │
+        ↓
+   platform bus
+        │
+        │ 匹配成功
+        ↓
+platform_driver
+        │
+        ↓
+      probe()
+```
+
+匹配和 probe 的调用都由 Linux 内核完成，不需要驱动程序手动调用 probe。
+
+需要注意，platform 总线并不只有名称匹配一种方式，还可以通过设备树、ACPI、id_table 等信息进行匹配；名称匹配只是其中一种方式。
+
+#### struct device_driver
+
+struct device_driver 是 Linux 设备模型中用于描述一个**通用设备驱动**的结构体，保存驱动名称、所属总线、匹配信息以及驱动相关回调等内容。
+
+很多具体总线的驱动结构体都会在内部包含一个 struct device_driver，用它接入 Linux 统一的设备模型。
+
+```c
+#include <linux/device.h>
+
+/* Linux 4.9，仅列出当前学习阶段相关成员 */
+struct device_driver {
+    const char *name;                     /* 驱动名称 */
+    struct bus_type *bus;                 /* 驱动所属的总线 */
+    struct module *owner;                 /* 所属内核模块 */
+
+    const struct of_device_id *of_match_table; /* 设备树匹配表 */
+
+    int  (*probe)(struct device *dev);    /* 匹配成功后调用 */
+    int  (*remove)(struct device *dev);   /* 设备与驱动分离时调用 */
+    void (*shutdown)(struct device *dev); /* 系统关机时调用 */
+
+    const struct dev_pm_ops *pm;          /* 电源管理操作 */
+
+    /* 还有其他成员 */
+};
+```
+
+| 成员             | 说明                     |
+| -------------- | ---------------------- |
+| name           | 驱动名称，可以参与设备与驱动的匹配      |
+| bus            | 指向该驱动所属的总线             |
+| owner          | 指向拥有该驱动的内核模块           |
+| of_match_table | 设备树匹配表，用于描述该驱动支持的设备树设备 |
+| probe          | 设备与驱动匹配成功后调用           |
+| remove         | 设备与驱动解除绑定时调用           |
+| shutdown       | 系统关机或重启时调用             |
+| pm             | 驱动的电源管理操作              |
+
+可以简单理解为：
+
+```c
+struct device
+→ 一个具体设备
+
+struct device_driver
+→ 一个通用驱动
+
+struct bus_type
+→ 管理并匹配 device 和 device_driver
+```
+
+很多具体驱动结构体会包含 struct device_driver，例如：
+
+```c
+struct platform_driver {
+    int (*probe)(struct platform_device *);
+    int (*remove)(struct platform_device *);
+
+    struct device_driver driver;
+
+    /* 其他成员 */
+};
+```
+
+因此定义 platform_driver 时经常会看到：
+
+```c
+static struct platform_driver demo_driver = {
+    .probe  = demo_probe,
+    .remove = demo_remove,
+
+    .driver = {
+        .name = "demo_device",
+    },
+};
+```
+
+这里的：
+
+```c
+.driver
+→ struct device_driver
+
+.driver.name
+→ struct device_driver 中的 name 成员
+```
+
+也就是说：
+
+```
+struct platform_driver
+        │
+        └── struct device_driver driver
+                    │
+                    ├── name
+                    ├── bus
+                    ├── owner
+                    ├── of_match_table
+                    └── ...
+```
+
+struct device_driver 是 Linux 设备模型中的**通用驱动对象**；struct platform_driver、PCI 驱动、USB 驱动等则是在它的基础上增加各自总线所需的信息。
+
+#### struct device_node
+
+```c
+#include <linux/of.h>
+
+/* Linux 4.9，仅列出当前学习阶段相关成员 */
+struct device_node {
+    const char *name;                  /* 节点名称 */
+
+    struct property *properties;       /* 节点属性 */
+
+    struct device_node *parent;        /* 父节点 */
+    struct device_node *child;         /* 子节点 */
+    struct device_node *sibling;       /* 同级节点 */
+
+    /* 还有其他成员 */
+};
+```
+
+`struct device_node` 表示 Linux 内核中的**设备树节点对象**。
+
+设备树中的节点：
+
+```
+led {
+    compatible = "100ask,led";
+    status = "okay";
+};
+```
+
+经过内核解析后，会转换成：
+
+```
+设备树节点
+      ↓
+struct device_node
+```
+
+---
+
+成员说明：
+
+| 成员         | 说明       |
+| ---------- | -------- |
+| name       | 节点名称     |
+| properties | 保存该节点的属性 |
+| parent     | 指向父节点    |
+| child      | 指向第一个子节点 |
+| sibling    | 指向同级节点   |
+
+---
+
+例如设备树：
+
+```
+/
+└── led {
+        compatible = "100ask,led";
+        status = "okay";
+    };
+```
+
+内核中对应：
+
+```
+struct device_node
+
+        led节点
+
+        |
+        ├── compatible
+        |
+        └── status
+```
+
+驱动可以通过 `struct device_node` 获取设备树中的硬件描述信息。
+
+---
+
+在驱动中的使用：
+
+通常在 `probe()` 中获取设备树节点：
+
+```
+static int led_probe(struct platform_device *pdev)
+{
+    struct device_node *np;
+
+    np = pdev->dev.of_node;
+
+    return 0;
+}
+```
+
+获取节点后，可以读取设备树中的：
+
+```
+compatible
+reg
+interrupts
+gpios
+clocks
+```
+
+等属性。
+
+---
+
+简单理解：
+
+```
+.dts
+设备树源码
+
+      ↓ 编译
+
+.dtb
+设备树二进制文件
+
+      ↓ 内核解析
+
+struct device_node
+
+      ↓
+
+驱动读取硬件信息
+```
+
+`struct device_node` 是连接**设备树描述的硬件信息**和**驱动程序**之间的数据结构。
+### 函数
+#### platform_device_register
+
+```c
+/**
+ * @brief  向 Linux 内核注册一个 platform_device，
+ *         将该设备交给 platform 总线和 Linux 设备模型管理。
+ *
+ * @param  pdev: 指向需要注册的 struct platform_device。
+ *
+ * @retval 0: 注册成功。
+ *
+ * @retval 负数: 注册失败，返回相应的错误码。
+ */
+#include <linux/platform_device.h>
+
+int platform_device_register(struct platform_device *pdev);
+```
+
+platform_device_register() 注册成功后，platform_device 会进入 Linux 设备模型，并归属于 platform 总线。
+
+注册过程中，内核会自动尝试寻找能够与该设备匹配的 platform_driver；如果找到并成功匹配，就会进一步调用对应驱动的 probe()。
+
+可以简单理解为：
+
+```
+platform_device
+        ↓
+platform_device_register()
+        ↓
+交给 Linux 设备模型管理
+        ↓
+加入 platform 总线
+        ↓
+尝试匹配 platform_driver
+        ↓
+匹配成功
+        ↓
+调用 driver 的 probe()
+```
+
+例如：
+
+```c
+static void demo_release(struct device *dev)
+{
+}
+
+static struct platform_device demo_device = {
+    .name = "demo_device",
+    .id   = PLATFORM_DEVID_NONE,
+
+    .dev = {
+        .release = demo_release,
+    },
+};
+
+static int __init demo_init(void)
+{
+    int ret;
+
+    ret = platform_device_register(&demo_device);
+    if (ret)
+        return ret;
+
+    return 0;
+}
+```
+
+这里注册的是名为 demo_device 的 platform_device。注册后，Linux 会负责管理该设备，并尝试与 platform 总线上的驱动进行匹配。
+
+platform_device_register() 只负责注册设备，不需要手动调用匹配函数，也不需要手动调用 driver 的 probe()。
+
+#### platform_device_unregister
+
+```c
+/**
+ * @brief  注销一个已经注册的 platform_device，
+ *         将该设备从 Linux 设备模型和 platform 总线中移除。
+ *
+ * @param  pdev: 指向需要注销的 struct platform_device。
+ *
+ * @retval 无返回值。
+ */
+#include <linux/platform_device.h>
+
+void platform_device_unregister(struct platform_device *pdev);
+```
+
+platform_device_unregister() 通常与 platform_device_register() 成对使用：
+
+```
+platform_device_register()
+→ 注册 platform_device
+
+platform_device_unregister()
+→ 注销 platform_device
+```
+
+注销时，内核会将设备从设备模型中移除，并释放它所占用的相关资源；随后降低设备对象的引用计数。
+
+如果该 platform_device 当前已经和某个 platform_driver 绑定，设备被注销时会触发设备与驱动的分离流程，并调用对应驱动的 remove() 回调进行清理。
+
+可以简单理解为：
+
+```
+platform_device
+        ↓
+platform_device_unregister()
+        ↓
+从 platform 总线 / 设备模型中移除
+        ↓
+如果已经绑定 driver
+        ↓
+执行解除绑定流程
+        ↓
+driver 的 remove()
+        ↓
+降低设备引用计数
+        ↓
+引用计数最终归零后执行 release()
+```
+
+例如：
+
+```c
+static void demo_release(struct device *dev)
+{
+    /* 设备对象最终释放时执行 */
+}
+
+static struct platform_device demo_device = {
+    .name = "demo_device",
+
+    .dev = {
+        .release = demo_release,
+    },
+};
+
+static void __exit demo_exit(void)
+{
+    platform_device_unregister(&demo_device);
+}
+```
+
+需要注意：
+
+```
+remove()
+→ 设备与 driver 解除绑定时调用
+
+release()
+→ struct device 的引用计数最终归零时调用
+```
+
+两者作用不同，不要混淆。
+
+#### platform_driver_register
+
+platform_driver_register() 本质上是一个**函数式宏**，用于向 Linux 内核注册一个 platform_driver，使其进入 platform 总线的驱动管理体系，并参与与 platform_device 的匹配。
+
+```
+/**
+ * @brief  注册一个 platform_driver，
+ *         将其交给 Linux 设备模型和 platform 总线管理。
+ *
+ * @param  drv: 指向需要注册的 struct platform_driver。
+ *
+ * @retval 0: 注册成功。
+ *
+ * @retval 负数: 注册失败，返回相应的错误码。
+ */
+#include <linux/platform_device.h>
+
+#define platform_driver_register(drv) \
+        __platform_driver_register(drv, THIS_MODULE)
+```
+
+可以简单理解为：
+
+```
+platform_driver
+        ↓
+platform_driver_register()
+        ↓
+交给 Linux 设备模型管理
+        ↓
+加入 platform 总线的驱动管理体系
+        ↓
+尝试匹配已经存在的 platform_device
+        ↓
+匹配成功
+        ↓
+调用对应的 probe()
+```
+
+例如：
+
+```c
+static int demo_probe(struct platform_device *pdev)
+{
+    /* 获取设备资源并初始化设备 */
+    return 0;
+}
+
+static struct platform_driver demo_driver = {
+    .probe = demo_probe,
+
+    .driver = {
+        .name = "demo_device",
+    },
+};
+
+static int __init demo_init(void)
+{
+    int ret;
+
+    ret = platform_driver_register(&demo_driver);
+    if (ret)
+        return ret;
+
+    return 0;
+}
+```
+
+platform_driver_register() 只负责将驱动注册进 Linux 设备模型，不需要驱动程序手动调用匹配函数，也不需要手动调用 probe()。
+
+如果已经存在能够与该 platform_driver 匹配的 platform_device，内核会自动进行匹配，并在匹配成功后调用 probe()。
+
+其中 THIS_MODULE 由 platform_driver_register() 自动传入，用于表示该驱动所属的内核模块，因此调用时只需要传入 platform_driver 指针。
+
+#### platform_driver_unregister
+
+```c
+/**
+ * @brief  注销一个已经注册的 platform_driver，
+ *         将该驱动从 Linux 设备模型和 platform 总线中移除。
+ *
+ * @param  drv: 指向需要注销的 struct platform_driver。
+ *
+ * @retval 无返回值。
+ */
+#include <linux/platform_device.h>
+
+void platform_driver_unregister(struct platform_driver *drv);
+```
+
+platform_driver_unregister() 通常与 platform_driver_register() 成对使用：
+
+```
+platform_driver_register()
+→ 注册 platform_driver
+
+platform_driver_unregister()
+→ 注销 platform_driver
+```
+
+如果该 platform_driver 当前已经和某些 platform_device 绑定，注销驱动时会先解除这些绑定，并调用对应的 remove() 回调完成驱动侧的清理。
+
+可以简单理解为：
+
+```
+platform_driver
+        ↓
+platform_driver_unregister()
+        ↓
+从 platform 总线的驱动管理体系中移除
+        ↓
+解除与已绑定 platform_device 的关系
+        ↓
+调用 remove()
+```
+
+例如：
+
+```c
+static int demo_remove(struct platform_device *pdev)
+{
+    /* 释放驱动为该设备申请的资源 */
+    return 0;
+}
+
+static struct platform_driver demo_driver = {
+    .remove = demo_remove,
+
+    .driver = {
+        .name = "demo_device",
+    },
+};
+
+static void __exit demo_exit(void)
+{
+    platform_driver_unregister(&demo_driver);
+}
+```
+
+需要注意：
+
+```
+platform_driver_unregister()
+→ 注销的是 driver
+
+platform_device_unregister()
+→ 注销的是 device
+```
+
+两者分别对应 platform 总线两侧的对象。
+
+#### platform_get_resource
+
+```c
+/**
+ * @brief  从 platform_device 的 resource 数组中，
+ *         按资源类型和序号获取指定的资源。
+ *
+ * @param  pdev: 指向目标 struct platform_device。
+ *
+ * @param  type: 要获取的资源类型，
+ *               常见值有 IORESOURCE_MEM、IORESOURCE_IRQ 等。
+ *
+ * @param  num: 同一类型资源中的序号，从 0 开始。
+ *
+ * @retval 非 NULL: 找到资源，返回对应的 struct resource 指针。
+ *
+ * @retval NULL: 没有找到符合条件的资源。
+ */
+#include <linux/platform_device.h>
+
+struct resource *platform_get_resource(struct platform_device *pdev,
+                                       unsigned int type,
+                                       unsigned int num);
+```
+
+platform_get_resource() 会遍历 platform_device 中的 resource 数组，只查找指定 type 的资源，然后返回其中第 num 个资源的 struct resource 指针。
+
+其中 num 是**同一类型资源中的序号**，不是 resource 数组的绝对下标。
+
+struct resource 中 start 和 end 的具体含义由资源类型决定：
+
+```c
+IORESOURCE_MEM
+→ start / end 表示内存物理地址范围
+
+IORESOURCE_IO
+→ start / end 表示 I/O Port 地址范围
+
+IORESOURCE_IRQ
+→ start / end 表示 IRQ 编号范围
+
+IORESOURCE_DMA
+→ start / end 表示 DMA 通道编号范围
+```
+
+例如：
+
+```
+static struct resource demo_resources[] = {
+    {
+        .start = 0x10000000,
+        .end   = 0x10000FFF,
+        .flags = IORESOURCE_MEM,
+    },
+    {
+        .start = 32,
+        .end   = 32,
+        .flags = IORESOURCE_IRQ,
+    },
+    {
+        .start = 0x20000000,
+        .end   = 0x20000FFF,
+        .flags = IORESOURCE_MEM,
+    },
+};
+```
+
+获取第 0 个内存资源：
+
+```
+struct resource *res;
+
+res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+```
+
+此时 res 指向：
+
+```
+start = 0x10000000
+end   = 0x10000FFF
+flags = IORESOURCE_MEM
+```
+
+因此：
+
+```
+res->start
+```
+
+得到的是内存资源的起始物理地址 0x10000000。
+
+获取第 0 个中断资源：
+
+```
+res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+```
+
+此时 res 指向：
+
+```
+start = 32
+end   = 32
+flags = IORESOURCE_IRQ
+```
+
+因此：
+
+```
+res->start
+```
+
+得到的是 IRQ 号 32，而不是地址。
+
+获取第 1 个内存资源：
+
+```
+res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+```
+
+此时返回的是：
+
+```
+start = 0x20000000
+end   = 0x20000FFF
+flags = IORESOURCE_MEM
+```
+
+中间的 IRQ 资源不会计入 IORESOURCE_MEM 的 num 序号。
+
+可以简单理解为：
+
+```
+platform_device
+      │
+      └── resource[]
+             ↓
+platform_get_resource()
+             ↓
+先按 type 筛选
+             ↓
+再取第 num 个
+             ↓
+返回对应的 struct resource *
+```
+
+platform_get_resource() 返回的是**资源结构体指针**，不是 start 的值；真正需要资源值时，再根据资源类型读取 res->start、res->end 等成员。
+
+该函数经常在 platform_driver 的 probe() 中使用，用于取得与当前设备相关的硬件资源。
+
+## **9.8 设备树**
+### 编译
+
+**编译设备树文件**
+```
+cd /home/book/100ask_imx6ull-sdk/Buildroot_2020.02.x/output/build/linux-origin_master
+
+make ARCH=arm CROSS_COMPILE=arm-buildroot-linux-gnueabihf- 100ask_imx6ull-14x14.dtb
+```
+
+**重新上传设备树**，然后重启开发板
+```
+adb push arch/arm/boot/dts/100ask_imx6ull-14x14.dtb /boot/100ask_imx6ull-14x14.dtb
+```
+### 数据类型
+#### struct property
+
+用于描述设备树节点中的一个属性，保存属性名称、属性值以及属性长度等信息。
+
+```c
+#include <linux/of.h>
+
+struct property {
+    char *name;
+    int length;
+    void *value;
+    struct property *next;
+    unsigned long _flags;
+    unsigned int unique_id;
+    struct bin_attribute attr;
+};
+```
+
+|成员|说明|
+|---|---|
+|name|属性名称|
+|length|属性值长度，单位为字节|
+|value|指向属性值数据|
+|next|指向下一个属性|
+|_flags|内核内部标志|
+|unique_id|内部唯一编号|
+|attr|内部属性对象|
+
+例如设备树中的 `status = "okay";`，可以由一个 struct property 表示。
+
+通常通过 of_find_property() 获取对应的属性对象。
+
+### 函数
+#### of_find_node_by_path
+
+```c
+/**
+ * @brief  根据设备树节点路径查找对应节点。
+ *
+ * @param  path: 设备树节点的完整路径。
+ *
+ * @retval 非NULL: 找到的设备树节点指针。
+ * @retval NULL: 查找失败。
+ */
+#include <linux/of.h>
+
+struct device_node *of_find_node_by_path(const char *path);
+```
+
+例如：
+
+```c
+struct device_node *np;
+
+np = of_find_node_by_path("/mydevice");
+if (!np)
+    return -ENODEV;
+
+/* 使用 np 访问节点属性 */
+
+of_node_put(np);
+```
+
+成功获取的节点引用使用完毕后，需要调用 of_node_put()。
+
+#### of_node_put
+
+```c
+/**
+ * @brief  释放设备树节点的引用，使该节点的引用计数减 1。
+ *
+ * @param  node: 指向需要释放引用的设备树节点（struct device_node）。
+ *               可以为 NULL，此时函数不执行任何操作。
+ *
+ * @retval 无：void 类型，无返回值。
+ */
+#include <linux/of.h>
+
+void of_node_put(struct device_node *node);
+```
+
+of_node_put() 用于释放之前获取的设备树节点引用，通常与 of_find_node_by_path() 等设备树节点查找函数配合使用。
+
+**注意：** 该函数只是减少节点的引用计数，并不意味着每次调用都会立即释放节点占用的内存。
+
+使用示例：
+
+```c
+struct device_node *node;
+const char *str;
+int ret;
+
+/* 1. 获取设备树节点 */
+node = of_find_node_by_path("/led@20c406c");
+if (!node)
+    return -ENODEV;
+
+/* 2. 读取节点属性 */
+ret = of_property_read_string(node, "compatible", &str);
+if (ret == 0)
+    printk("compatible = %s\n", str);
+
+/* 3. 使用完毕，释放节点引用 */
+of_node_put(node);
+```
+
+**核心理解：**
+
+- of_find_node_by_path()：查找节点，成功后获得一个节点引用。
+    
+- of_node_put()：使用完毕后释放该引用，避免引用计数无法正常减少。
+    
+- 一个成功获取的节点引用，在不再需要时应对应调用一次 of_node_put()。
+#### of_property_read_string
+
+```c
+/**
+ * @brief  读取设备树节点中指定属性的字符串值。
+ *
+ * @param  np: 设备树节点指针。
+ * @param  propname: 属性名称。
+ * @param  out_string: 保存字符串指针的变量地址。
+ *
+ * @retval 0: 读取成功。
+ * @retval 负数: 属性不存在、没有数据或字符串格式错误。
+ */
+#include <linux/of.h>
+
+int of_property_read_string(
+    const struct device_node *np,
+    const char *propname,
+    const char **out_string);
+```
+
+例如读取设备树的 status 属性：
+
+```c
+struct device_node *np;
+const char *status;
+int ret;
+
+np = of_find_node_by_path("/mydevice");
+if (!np)
+    return -ENODEV;
+
+ret = of_property_read_string(np, "status", &status);
+if (!ret)
+    pr_info("status = %s\n", status);
+
+of_node_put(np);
+```
+
+读取成功后，out_string 指向属性中的字符串，不需要使用 kfree() 释放。
+
+#### of_property_read_u32_array
+
+```c
+/**
+ * @brief  从设备树属性中读取指定数量的 32 位无符号整数。
+ *
+ * @param  np: 设备树节点指针。
+ * @param  propname: 属性名称。
+ * @param  out_values: 保存读取结果的数组。
+ * @param  sz: 需要读取的 u32 元素数量。
+ *
+ * @retval 0: 读取成功。
+ * @retval -EINVAL: 属性不存在等错误。
+ * @retval -ENODATA: 属性没有数据。
+ * @retval -EOVERFLOW: 属性数据长度不足。
+ */
+#include <linux/of.h>
+
+int of_property_read_u32_array(
+    const struct device_node *np,
+    const char *propname,
+    u32 *out_values,
+    size_t sz);
+```
+
+例如设备树：
+
+```
+values = <10 20 30 40>;
+```
+
+读取：
+
+```c
+struct device_node *np;
+u32 values[4];
+int ret;
+
+np = of_find_node_by_path("/mydevice");
+if (!np)
+    return -ENODEV;
+
+ret = of_property_read_u32_array(np, "values", values, 4);
+
+of_node_put(np);
+if (ret)
+    return ret;
+```
+
+读取成功后，values 数组依次保存 10、20、30、40。
+
+**sz 表示需要读取的元素数量，不是字节数。**
+
+#### of_iomap
+
+```c
+/**
+ * @brief  根据设备树中的地址资源，将物理地址映射到内核虚拟地址空间。
+ *
+ * @param  device: 设备树节点指针。
+ * @param  index: reg 属性中的资源索引，从 0 开始。
+ *
+ * @retval 非NULL: 映射后的 I/O 内存地址。
+ * @retval NULL: 地址解析或映射失败。
+ */
+#include <linux/of_address.h>
+
+void __iomem *of_iomap(
+    struct device_node *device,
+    int index);
+```
+
+例如设备树：
+
+```
+reg = <0x10000000 0x04
+       0x10001000 0x04>;
+```
+
+当父节点地址格式为 1 个地址 cell 和 1 个大小 cell，且相关地址可以正确转换时：
+
+- index = 0：映射第一个地址资源。
+    
+- index = 1：映射第二个地址资源。
+    
+
+返回的地址可以通过 readl()、writel() 等函数访问寄存器。
+
+**使用完毕后，需要调用 iounmap() 解除映射。**
+
+
+
+
+
+
+## **设备树基础语法**
+
+### 1. 文件与基本结构
+
+```text
+.dts   → 具体开发板的设备树源码
+.dtsi  → 可被其他设备树包含的公共设备树文件
+.dtb   → DTS 编译后的二进制设备树
+```
+
+基本结构：
+
+```dts
+/dts-v1/;
+/ {
+    node {
+        property = "value";
+    };
+};
+```
+
+```text
+/           → 根节点
+node        → 子节点
+property    → 属性名
+"value"     → 属性值
+```
+
+### 2. 属性值
+
+```dts
+name = "hello";             /* 字符串 */
+value = <10 20>;            /* cell 数据，每个 cell 通常为 32 位 */
+data = [01 02 03];          /* 字节数据 */
+enabled;                    /* 布尔属性，只表示该属性存在 */
+```
+
+### 3. 节点名称、标签与引用
+
+节点名可以带 unit-address：
+
+```dts
+uart@2020000 {
+};
+```
+
+```text
+uart       → 节点名称
+2020000    → unit-address，通常与 reg 的起始地址对应
+```
+
+节点可以定义 label，并通过 `&label` 引用：
+
+```dts
+uart1: uart@2020000 {
+};
+
+&uart1 {
+    status = "okay";
+};
+```
+
+```text
+uart1:     → 定义标签
+&uart1     → 引用该标签对应的节点
+```
+
+节点完整路径从根节点开始表示：
+
+```text
+/
+└── soc
+    └── i2c@21a0000
+        └── sensor@50
+```
+
+```text
+/soc
+/soc/i2c@21a0000
+/soc/i2c@21a0000/sensor@50
+```
+
+### 4. 常用属性
+
+```dts
+compatible = "vendor,device";   /* 设备兼容信息，可用于驱动匹配 */
+status = "okay";                /* 启用设备 */
+status = "disabled";            /* 禁用设备 */
+```
+
+### 5. 地址与资源描述
+
+`reg` 的格式由父节点决定：
+
+```dts
+bus {
+    #address-cells = <1>;
+    #size-cells = <1>;
+
+    device@1000 {
+        reg = <0x1000 0x200>;
+    };
+};
+```
+
+```text
+#address-cells
+→ 一个地址占几个 cell
+
+#size-cells
+→ 一个大小占几个 cell
+
+reg = <0x1000 0x200>
+→ 起始地址 0x1000
+→ 大小     0x200
+```
+
+`ranges` 用于描述子总线地址到父总线地址的转换：
+
+```dts
+ranges = <0x0000 0x20000000 0x1000>;
+```
+
+```text
+子总线起始地址 → 0x0000
+父总线起始地址 → 0x20000000
+映射大小       → 0x1000
+```
+
+### 6. 常见特殊节点与属性
+
+```text
+model
+→ 开发板型号
+
+aliases
+→ 为节点定义别名
+
+chosen
+→ 保存启动相关信息，如 bootargs
+
+memory
+→ 描述系统物理内存
+```
+#  imax6ull寄存器
+
+## GPIO 与物理引脚引脚复用关系查询
+
+查找某个 GPIO 或物理引脚可以复用成哪些功能时，可以查看 **4.1.1 Muxing Options**。该表集中列出了各外设信号、对应的物理引脚以及所使用的 ALT 复用模式。
+
+## GPIO内存映射表
+![[GPIO内存映射表.png]]
+## GPIO使能寄存器目录
+![[GPIO使能寄存器目录.png]]
+
+
+## 时钟使能寄存器
+### CCM_CCGR1
 
 CCM 的时钟门控寄存器之一，用于控制多个外设模块的时钟开启和关闭，以实现时钟管理和降低功耗。
 
@@ -10587,17 +12508,24 @@ CCGR 中每个 CG 字段占 2 bit，取值含义相同：
 
 ![[CCM_CCGR1.png]]
 
-## IOMUXC_SNVS_SW_MUX_CTL_PAD_SNVS_TAMPER3
+## 复用控制寄存器
+### IOMUXC_SNVS_SW_MUX_CTL_PAD_SNVS_TAMPER3
 
 IOMUXC_SNVS 的引脚复用控制寄存器，用于选择 SNVS_TAMPER3 引脚所使用的复用功能，并可控制该引脚的输入通路。
 ![[IOMUXC_SNVS_SW_MUX_CTL_PAD_SNVS_TAMPER3.png]]
 
-## GPIO5_DR
-GPIO5 的数据寄存器，用于保存 GPIO 输出数据；在 GPIO 配置为输入时，读取该寄存器也可能反映对应输入信号的状态。
+## GPIO数据寄存器
+### GPIOx_DR
+
+GPIOx 的数据寄存器，用于保存或读取该 GPIO 组各引脚的数据。具体属于 GPIO1、GPIO2、GPIO5 等哪一组，由 GPIO 模块的基地址决定；寄存器中的每一位对应这一组中的一个 GPIO 引脚。
+
 ![[GPIO5_DR.png]]
 
-## **GPIO5_GDIR**  
-GPIO5 的方向控制寄存器，用于设置各 GPIO 引脚是作为输入还是输出。寄存器中的每一位对应一个 GPIO 信号。
+## GPIO方向寄存器
+### GPIOx_GDIR  
+
+GPIOx 的方向控制寄存器，用于设置该 GPIO 组各引脚为输入或输出。具体控制哪一组 GPIO 由基地址决定，寄存器中的每一位对应这一组中的一个 GPIO 引脚。
+
 ![[GPIO5_GDIR.png]]
 
 # 常见硬件手册缩写
