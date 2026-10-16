@@ -692,61 +692,138 @@ xxd file.txt
 这两个都可以把文件内容按十六进制显示出来
 ```
 
-### ps : 查看当前系统中的进程
+### ps：查看进程信息
 
-| 命令 | 选项    | 参数 |
-| ---- | ------- | ---- |
-| ps   | -ef aux | \    |
+ps（Process Status）是 Linux 中用于**查看进程信息**的命令，可以查看进程 ID、所属用户、CPU 和内存占用、运行状态、父子进程关系等。
 
-```bash
-作用:
-查看当前系统中正在运行的进程
-常用命令:
+ps 显示的是执行命令时的进程快照，不会自动持续刷新。
 
-ps
-查看当前终端相关的进程
+**常用参数**
 
-ps -ef
-查看系统中所有进程，常用于 Linux
+| 参数         | 作用             |
+| ---------- | -------------- |
+| `-A`、`-e`  | 显示系统中的所有进程     |
+| `-f`       | 使用完整格式显示进程信息   |
+| `-F`       | 使用更详细的完整格式     |
+| `a`        | 显示有终端关联的其他用户进程 |
+| `u`        | 使用以用户为中心的详细格式  |
+| `x`        | 包含没有控制终端的进程    |
+| `-p PID`   | 查看指定 PID 的进程   |
+| `-u USER`  | 查看指定有效用户所属的进程  |
+| `-U USER`  | 查看指定真实用户所属的进程  |
+| `-C NAME`  | 根据可执行程序名称查找进程  |
+| `-o`       | 自定义输出字段        |
+| `-L`       | 显示线程信息         |
+| `--forest` | 以树形结构显示父子进程关系  |
+| `--sort`   | 按指定字段排序        |
 
-ps aux
-查看系统中所有进程，显示信息更详细
+**常用命令组合**
 
-ps | grep 进程名
-查找指定进程
-example:
-ps
-ps -ef
-ps aux
-ps | grep adbd
-ps -ef | grep ssh
-常见字段说明:
+| 命令                | 作用                     |
+| ----------------- | ---------------------- |
+| `ps`              | 查看与当前终端相关的进程（默认选择范围较小） |
+| `ps -A`           | 查看系统所有进程               |
+| `ps -ef`          | 查看所有进程的详细信息            |
+| `ps -eF`          | 查看所有进程的扩展详细信息          |
+| `ps aux`          | 查看所有进程及 CPU、内存占用等信息    |
+| `ps -p 1234`      | 查看 PID 为 1234 的进程      |
+| `ps -u root`      | 查看有效用户为 root 的进程       |
+| `ps -C bash`      | 查找名称为 bash 的进程         |
+| `ps -ef --forest` | 以树形结构查看所有进程            |
+| `ps -L -p 1234`   | 查看指定进程的线程信息            |
 
-PID:进程号
+**常见输出字段**
 
-PPID:父进程号
+|字段|含义|
+|---|---|
+|USER / UID|进程所属用户|
+|PID|进程 ID|
+|PPID|父进程 ID|
+|%CPU|CPU 使用率|
+|%MEM|物理内存使用率|
+|VSZ|虚拟内存大小，单位 KiB|
+|RSS|实际驻留的物理内存大小，单位 KiB|
+|TTY|控制终端，`?` 表示没有控制终端|
+|STAT|进程状态|
+|START / STIME|进程启动时间|
+|TIME|累计使用的 CPU 时间|
+|ELAPSED / ETIME|从进程启动到现在经过的时间|
+|CMD / COMMAND|进程命令信息|
+|COMM|可执行程序名称|
+|ARGS|进程的完整命令行及参数|
 
-USER:运行该进程的用户
+**进程状态 STAT**
 
-CMD:启动该进程的命令
+|状态|含义|
+|---|---|
+|R|正在运行或处于可运行状态|
+|S|可中断睡眠，等待事件发生|
+|D|不可中断睡眠，通常在等待 I/O|
+|T|已停止或被调试跟踪停止|
+|Z|僵尸进程，已结束但尚未被父进程回收|
+|I|空闲的内核线程|
 
-%CPU:CPU 占用率
+STAT 中可能还有附加字符，例如：
 
-%MEM:内存占用率
+- `s`：会话领导者。
+    
+- `l`：多线程进程。
+    
+- `+`：位于前台进程组。
+    
 
-常见用法:
-1. 查看 adbd 是否正在运行
-ps | grep adbd
+**实际使用示例**
 
-2. 查看 ssh 相关进程
-ps -ef | grep ssh
-
-3. 找到进程号后结束进程
-kill 进程号
-说明:
-进程就是正在运行的程序
-比如 shell、adbd、ssh、应用程序等，都可以看作进程
 ```
+# 查找 sshd 进程
+ps -C sshd
+
+# 使用管道搜索进程
+ps -ef | grep nginx
+
+# 查看指定进程的详细信息
+ps -fp 1234
+
+# 查看进程的父子关系
+ps -ef --forest
+
+# 显示当前所有进程的 PID 和命令行
+ps -eo pid,args
+```
+
+**注意：**
+
+- 使用 `ps -ef | grep` 时，输出中可能包含 grep 命令自身。
+    
+- `ps aux` 是 BSD 风格写法，不要随意改成 `ps -aux`，两者不完全等价。
+    
+- 如果需要持续观察 CPU、内存等信息，可以使用 `top`，而不是反复执行 ps。
+
+#### kill
+
+向进程发送信号，常用于结束进程，也可以用于通知、暂停或恢复进程。
+
+```
+kill 1234          # 发送 SIGTERM（15），请求进程退出
+kill -9 1234       # 发送 SIGKILL（9），强制结束进程
+kill -STOP 1234    # 暂停进程
+kill -CONT 1234    # 继续运行暂停的进程
+kill -SIGIO 1234   # 发送 SIGIO，常用于测试异步通知处理
+kill -l            # 列出信号
+kill 1234 5678     # 同时向多个进程发送 SIGTERM
+```
+
+优先使用 kill PID，让进程有机会清理资源；无法正常退出时再使用 kill -9 PID。
+
+SIGKILL 无法被捕获、阻塞或忽略。操作其他用户的进程通常需要相应权限。
+
+SIGIO 常用于通知程序有 I/O 事件。程序注册了对应的信号处理函数后，收到信号就会执行该函数；如果未处理，默认行为是终止进程。
+
+```
+kill -SIGIO 107939  # 向 PID 为 107939 的进程发送 SIGIO
+```
+
+手动发送 SIGIO 只是在发送通知，不会产生真实的按键事件，也不会向驱动写入按键数据。
 
 ### stty：查看或设置终端窗口大小
 
@@ -3684,7 +3761,8 @@ kill命令要谨慎使用
 ```
 # 7 Linux 应用开发
 
-## 7.1 文件与设备控制
+
+## **7.1 文件与设备控制**
 
 ### 7.1.1 宏
 
@@ -3983,113 +4061,10 @@ ret = fcntl(fd, F_SETFL, flags | O_NONBLOCK | O_ASYNC);
 int fstat(int fd, struct stat *statbuf);
 ```
 
-## 7.2 多文件同时监视(I/O 多路复用)
+## **7.2 多文件同时监视(I/O 多路复用)**
 
+**I/O 多路复用，就是让一个线程同时等待多个文件或设备，哪个就绪，就处理哪个。**
 ### 7.2.1 宏
-#### fd_set相关
-
-##### FD_ZERO：清空集合
-
-```c
-/**
- * @brief  清空 fd_set 文件描述符集合，
- *         使集合中不包含任何文件描述符。
- *
- * @param  set: 指向需要清空的 fd_set 集合。
- *
- * @retval 无返回值。
- *
- * @note   FD_ZERO 是宏，不是函数。
- */
-#include <sys/select.h>
-
-FD_ZERO(fd_set *set);
-```
-
-代码示例：
-
-```c
-fd_set readfds;
-
-FD_ZERO(&readfds);
-
-/*
- * 清空 readfds 集合。
- *
- * 使用 FD_SET() 添加文件描述符之前，
- * 通常需要先调用 FD_ZERO() 清空集合。
- */
-```
-
-##### FD_SET：将fd加入集合
-
-```c
-/**
- * @brief  将指定文件描述符加入 fd_set 集合。
- *
- * @param  fd: 需要加入集合的文件描述符。
- *
- * @param  set: 指向目标 fd_set 集合。
- *
- * @retval 无返回值。
- *
- * @note   FD_SET 是宏，不是函数。
- */
-#include <sys/select.h>
-
-FD_SET(int fd, fd_set *set);
-```
-
-代码示例：
-
-```c
-fd_set readfds;
-
-FD_ZERO(&readfds);
-FD_SET(fd, &readfds);
-
-/*
- * 将 fd 加入 readfds 集合。
- *
- * readfds 传给 select() 后，
- * 可以用于监视 fd 是否变为可读。
- */
-```
-
-##### FD_ISSET：判断是否在集合
-
-```c
-/**
- * @brief  判断指定文件描述符是否存在于 fd_set 集合中。
- *
- * @param  fd: 需要判断的文件描述符。
- *
- * @param  set: 指向需要检查的 fd_set 集合。
- *
- * @retval 非 0: fd 存在于集合中。
- *
- * @retval 0: fd 不存在于集合中。
- *
- * @note   FD_ISSET 是宏，不是函数。
- */
-#include <sys/select.h>
-
-FD_ISSET(int fd, fd_set *set);
-```
-
-代码示例：
-
-```c
-if (FD_ISSET(fd, &readfds))
-{
-    /*
-     * fd 存在于 readfds 集合中。
-     *
-     * 当 readfds 经过 select() 处理后，
-     * 这里表示 fd 已经处于可读状态。
-     */
-}
-```
 
 ### 7.2.2 数据类型
 
@@ -4377,7 +4352,110 @@ ret = select(fd + 1, &readfds, NULL, NULL, &timeout);
  */
 ```
 
-## 7.3 输入系统
+#### FD_ZERO：清空集合
+
+```c
+/**
+ * @brief  清空 fd_set 文件描述符集合，
+ *         使集合中不包含任何文件描述符。
+ *
+ * @param  set: 指向需要清空的 fd_set 集合。
+ *
+ * @retval 无返回值。
+ *
+ * @note   FD_ZERO 是宏，不是函数。
+ */
+#include <sys/select.h>
+
+FD_ZERO(fd_set *set);
+```
+
+代码示例：
+
+```c
+fd_set readfds;
+
+FD_ZERO(&readfds);
+
+/*
+ * 清空 readfds 集合。
+ *
+ * 使用 FD_SET() 添加文件描述符之前，
+ * 通常需要先调用 FD_ZERO() 清空集合。
+ */
+```
+
+#### FD_SET：将fd加入集合
+
+```c
+/**
+ * @brief  将指定文件描述符加入 fd_set 集合。
+ *
+ * @param  fd: 需要加入集合的文件描述符。
+ *
+ * @param  set: 指向目标 fd_set 集合。
+ *
+ * @retval 无返回值。
+ *
+ * @note   FD_SET 是宏，不是函数。
+ */
+#include <sys/select.h>
+
+FD_SET(int fd, fd_set *set);
+```
+
+代码示例：
+
+```c
+fd_set readfds;
+
+FD_ZERO(&readfds);
+FD_SET(fd, &readfds);
+
+/*
+ * 将 fd 加入 readfds 集合。
+ *
+ * readfds 传给 select() 后，
+ * 可以用于监视 fd 是否变为可读。
+ */
+```
+
+#### FD_ISSET：判断是否在集合
+
+```c
+/**
+ * @brief  判断指定文件描述符是否存在于 fd_set 集合中。
+ *
+ * @param  fd: 需要判断的文件描述符。
+ *
+ * @param  set: 指向需要检查的 fd_set 集合。
+ *
+ * @retval 非 0: fd 存在于集合中。
+ *
+ * @retval 0: fd 不存在于集合中。
+ *
+ * @note   FD_ISSET 是宏，不是函数。
+ */
+#include <sys/select.h>
+
+FD_ISSET(int fd, fd_set *set);
+```
+
+代码示例：
+
+```c
+if (FD_ISSET(fd, &readfds))
+{
+    /*
+     * fd 存在于 readfds 集合中。
+     *
+     * 当 readfds 经过 select() 处理后，
+     * 这里表示 fd 已经处于可读状态。
+     */
+}
+```
+
+## **7.3 输入系统**
 
 ### 7.3.1 宏
 #### 输入事件类型宏（EV_*）
@@ -4739,7 +4817,7 @@ max_slots = 4 - 0 + 1 = 5
 ```
 
 表示设备支持 `5` 个多点触摸槽位。
-## 7.4 信号
+## **7.4 信号**
 
 ### 7.4.1 宏
 #### 信号编号宏
@@ -4837,7 +4915,7 @@ signal(SIGINT, handler);
 
 #### 信号处理方式宏
 
-**SIG_DFL、SIG_IGN、SIG_HOLD**
+##### **SIG_DFL、SIG_IGN、SIG_HOLD**
 
 这些宏可以作为 `signal()` 的 `handler` 参数，用于指定信号的处理方式。
 
@@ -4902,7 +4980,7 @@ signal(SIGINT, SIG_HOLD);
  */
 ```
 
-**SIG_ERR**
+##### **SIG_ERR**
 
 `SIG_ERR` 不是一种信号处理方式，而是 `signal()` 调用失败时的返回值。
 
@@ -4931,7 +5009,11 @@ if (ret == SIG_ERR)
      */
 }
 ```
-### 7.4.2 函数
+
+### 7.4.2 数据类型
+
+
+### 7.4.3 函数
 #### signal：设置信号处理方式
 
 ```c
@@ -4987,7 +5069,9 @@ fcntl(fd, F_SETFL, flags | FASYNC);
  */
 ```
 
-## 7.5 进程与休眠
+
+
+## **7.5 进程与休眠**
 
 ### 7.5.1 函数
 #### getpid：获取进程ID
@@ -5122,7 +5206,7 @@ if (nanosleep(&req, &rem) == -1)
 }
 ```
 
-## 7.6 内存
+## **7.6 内存**
 ### 7.6.1 函数
 #### bzero：内存置0
 
@@ -5267,7 +5351,7 @@ mmap 使用完成后，需要调用 munmap 取消映射。
 一般在程序退出前调用。
 ```
 
-## 7.7 网络编程
+## **7.7 网络编程**
 ### 7.7.1 宏
 
 #### INADDR_ANY
@@ -6046,7 +6130,7 @@ close()                                  close()
 关闭 socket                              关闭 socket
 ```
 
-## 7.8 串口
+## **7.8 串口**
 ### 7.8.1 宏
 #### struct termios相关宏
 
@@ -6537,7 +6621,7 @@ cfsetispeed 只是修改 struct termios 中保存的配置。
 
 通常还需要调用 tcsetattr，才会把配置真正设置到串口设备。
 
-## 7.9 I2C
+## **7.9 I2C**
 
 **测光强、距离、红外:**
 [[AP3216C.pdf#page=10]]
@@ -8977,6 +9061,232 @@ if (ret < 0)
     return -1;
 }
 ```
+
+# **应用层错误处理**
+### 宏
+#### EINTR
+
+```c
+#include <errno.h>
+
+EINTR /* 系统调用被信号中断 */
+```
+
+用户空间系统调用失败时，通常返回 -1，并通过 errno 表示具体错误。应先确认调用失败，再检查 errno。
+
+```c
+#include <unistd.h>
+#include <errno.h>
+
+/* fd 是已经成功打开的文件描述符 */
+static ssize_t read_retry(int fd, void *buf, size_t size)
+{
+    ssize_t ret;
+
+    do {
+        ret = read(fd, buf, size);
+    } while (ret < 0 && errno == EINTR);
+
+    return ret;
+}
+```
+
+# **驱动层错误处理**
+### 宏
+
+#### 常见错误码
+
+错误码是表示失败原因的整数宏，使用名称即可，不需要记具体数值。
+
+```c
+/* 用户空间使用 */
+#include <errno.h>
+
+/* Linux 内核代码使用 */
+#include <linux/errno.h>
+
+/* 以下列出宏名及含义，不是重新定义 */
+EINVAL       /* 参数不合法 */
+ENOMEM       /* 内存不足，无法分配内存 */
+ENODEV       /* 没有对应设备 */
+ENOENT       /* 文件或目录不存在 */
+EBADF        /* 文件描述符无效 */
+EFAULT       /* 内存地址无效或无法访问 */
+EBUSY        /* 设备或资源正忙 */
+EAGAIN       /* 资源暂时不可用，可稍后重试 */
+EWOULDBLOCK  /* 操作需要阻塞；Linux 中与 EAGAIN 值相同 */
+EINTR        /* 调用被信号中断 */
+EIO          /* 输入输出错误 */
+ETIMEDOUT    /* 操作超时 */
+EACCES       /* 访问权限不足 */
+EPERM        /* 操作不被允许 */
+EEXIST       /* 要创建的对象已经存在 */
+ENOSPC       /* 设备存储空间不足 */
+EMFILE       /* 当前进程打开的文件数量达到限制 */
+ENFILE       /* 系统打开的文件数量达到限制 */
+ESPIPE       /* 不支持文件定位操作 */
+ENOSYS       /* 功能或系统调用未实现 */
+EOPNOTSUPP   /* 不支持该操作 */
+```
+
+内核接口通常返回负错误码：
+
+```c
+return -EINVAL;
+```
+
+用户空间的 open、read 等调用失败时，通常返回 -1，并将具体错误码保存到 errno：
+
+```c
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+#include <stdio.h>
+
+int fd = open("/dev/example", O_RDONLY);
+
+if (fd == -1) {
+    if (errno == ENOENT)
+        printf("设备文件不存在\n");
+    else
+        perror("open");
+} else {
+    close(fd);
+}
+```
+
+先根据函数返回值确认失败，再检查 errno；成功调用不一定会将 errno 清零。具体返回规则以各接口定义为准。
+### 函数
+#### PTR_ERR
+
+```c
+/**
+ * @brief  从 Linux 内核错误指针中取出其中保存的错误码。
+ *
+ * @param  ptr: 错误指针。
+ *
+ * @retval 返回错误指针中保存的错误码，通常为负数。
+ */
+#include <linux/err.h>
+
+static inline long PTR_ERR(const void *ptr);
+
+```
+
+```c
+#include <linux/device.h>
+#include <linux/err.h>
+#include <linux/module.h>
+
+static int create_demo_class(void)
+{
+    struct class *demo_class;
+
+    demo_class = class_create(THIS_MODULE, "demo_class");
+
+    if (IS_ERR(demo_class))
+
+    {
+        err = PTR_ERR(demo_class);
+        printk("class_create failed, err = %d\n", err);
+
+        return err;    
+    }
+
+    class_destroy(demo_class);
+    return 0;
+}
+
+```
+
+这里 demo\_class 来自 class\_create。
+
+如果 class\_create 失败，demo\_class 中保存的不是正常 class 地址，而是错误指针；PTR\_ERR 把其中的错误码取出来作为函数返回值。
+
+#### IS_ERR
+
+```c
+/**
+ * @brief  判断一个指针是否为 Linux 内核错误指针。
+ *
+ * @param  ptr: 需要判断的指针。
+ *
+ * @retval true: ptr 是错误指针。
+ *
+ * @retval false: ptr 不是错误指针。
+ */
+#include <linux/err.h>
+
+static inline bool IS_ERR(const void *ptr);
+
+```
+
+```c
+#include <linux/device.h>
+#include <linux/err.h>
+#include <linux/module.h>
+
+static int create_demo_class(void)
+{
+    struct class *demo_class;
+
+    demo_class = class_create(THIS_MODULE, "demo_class");
+
+    if (IS_ERR(demo_class))
+        return PTR_ERR(demo_class);
+
+    class_destroy(demo_class);
+    return 0;
+}
+
+```
+
+这里 IS\_ERR 判断 class\_create 返回的 demo\_class 是否是错误指针。
+
+不能仅通过 demo\_class 是否等于 NULL 来判断 class\_create 是否失败。
+
+#### pr_err
+
+```c
+/**
+ * @brief  输出错误级别的内核日志，本质是函数式宏。
+ *
+ * @param  fmt: 格式字符串，支持 %d、%s 等格式说明符。
+ * @param  ...: 与格式说明符对应的可变参数，可省略。
+ *
+ * @retval int: 底层 printk 返回的日志输出字符数，通常忽略。
+ */
+#include <linux/printk.h>
+
+#define pr_err(fmt, ...) \
+    printk(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__)
+```
+
+日志可以通过 dmesg 查看，是否立即显示到控制台取决于控制台日志级别。字符串末尾通常加 \n。
+
+```c
+#include <linux/of.h>
+#include <linux/errno.h>
+#include <linux/printk.h>
+
+static int check_device_node(void)
+{
+    const char *path = "/example-device";
+    struct device_node *node;
+
+    node = of_find_node_by_path(path);
+    if (!node) {
+        pr_err("cannot find device node: %s\n", path);
+        return -ENODEV;
+    }
+
+    of_node_put(node);
+    return 0;
+}
+```
+
+pr_err 只记录日志，不会自动退出函数或返回错误码；错误处理需要另外编写。
+
 # 9 Linux 驱动开发
 
 ## 9.1 **写驱动设备流程**
@@ -9108,6 +9418,7 @@ static void __exit demo_exit(void)
 
 它们属于 Linux 内核的修饰宏，不是函数。
 
+
 ### 函数
 
 #### module_init
@@ -9211,6 +9522,48 @@ hello: major = 100
 
 内核日志可以通过 dmesg 等方式查看。
 
+#### container_of
+
+```c
+/**
+ * @brief  根据结构体成员的地址，计算其所属结构体对象的地址。
+ *         本质是函数式宏。
+ *
+ * @param  ptr: 指向结构体中指定成员的指针。
+ * @param  type: 包含该成员的结构体类型，如 struct example。
+ * @param  member: 该成员在结构体中的名称，不是地址。
+ *
+ * @retval type *: 指向所属结构体对象的指针。
+ */
+#include <linux/kernel.h>
+
+#define container_of(ptr, type, member) ({                     \
+    const typeof(((type *)0)->member) *__mptr = (ptr);          \
+    (type *)((char *)__mptr - offsetof(type, member)); })
+```
+
+通过“成员地址减去成员在结构体中的偏移量”，得到结构体起始地址，不复制或创建结构体。
+
+```c
+#include <linux/kernel.h>
+
+struct example {
+    int id;
+    int value;
+};
+
+static void example_usage(void)
+{
+    struct example obj = { .id = 1, .value = 100 };
+    int *value_ptr = &obj.value;
+    struct example *p;
+
+    p = container_of(value_ptr, struct example, value);
+    /* p 等于 &obj，可以通过 p->id 访问原对象的 id */
+}
+```
+
+ptr 必须确实指向指定类型对象中的对应成员，不能仅凭指针类型相同就随意传入。
 ## 9.3 **内核通用机制**
 
 整理与具体设备类型无关、在不同驱动中都可能使用的通用内核机制，例如用户空间与内核空间的数据交互和错误处理。
@@ -9396,93 +9749,745 @@ copy_size
 
 因此这次调用的实际含义就是：把用户程序通过 write() 写入的数据保存到驱动的 kernel\_buf 中。
 
-#### PTR_ERR
+
+
+## **等待队列**
+
+### 数据类型
+
+##### wait_queue_head_t
+
+wait_queue_head_t 是 Linux 内核的等待队列头类型，用于管理等待某个条件成立的任务。
+
+```c
+#include <linux/wait.h>
+
+/* Linux 4.9 系列的定义 */
+struct __wait_queue_head {
+    spinlock_t lock;             /* 保护等待队列内部操作 */
+    struct list_head task_list;  /* 等待任务组成的链表 */
+};
+
+typedef struct __wait_queue_head wait_queue_head_t;
+```
+
+等待队列保存等待任务，不保存设备数据。设备数据或事件状态需要另行定义。
+
+通常通过 DECLARE_WAIT_QUEUE_HEAD 定义并初始化，不直接操作内部成员。
+
+### 函数
+
+#### DECLARE_WAIT_QUEUE_HEAD
 
 ```c
 /**
- * @brief  从 Linux 内核错误指针中取出其中保存的错误码。
+ * @brief  定义并初始化一个等待队列头，本质是函数式宏。
  *
- * @param  ptr: 错误指针。
+ * @param  name: 要定义的等待队列头变量名，不是指针。
  *
- * @retval 返回错误指针中保存的错误码，通常为负数。
+ * @retval 无: 这是声明宏，不返回结果。
  */
-#include <linux/err.h>
+#include <linux/wait.h>
 
-static inline long PTR_ERR(const void *ptr);
-
+#define DECLARE_WAIT_QUEUE_HEAD(name) \
+    wait_queue_head_t name = __WAIT_QUEUE_HEAD_INITIALIZER(name)
 ```
+
+定义后即可供等待和唤醒接口使用，不需要再次初始化。
 
 ```c
-#include <linux/device.h>
-#include <linux/err.h>
-#include <linux/module.h>
+#include <linux/wait.h>
 
-static int create_demo_class(void)
-{
-    struct class *demo_class;
-
-    demo_class = class_create(THIS_MODULE, "demo_class");
-
-    if (IS_ERR(demo_class))
-
-    {
-        err = PTR_ERR(demo_class);
-        printk("class_create failed, err = %d\n", err);
-
-        return err;    
-    }
-
-    class_destroy(demo_class);
-    return 0;
-}
-
+/* 文件作用域：定义一个可供多个函数使用的等待队列头 */
+static DECLARE_WAIT_QUEUE_HEAD(data_wait);
 ```
-
-这里 demo\_class 来自 class\_create。
-
-如果 class\_create 失败，demo\_class 中保存的不是正常 class 地址，而是错误指针；PTR\_ERR 把其中的错误码取出来作为函数返回值。
-
-#### IS_ERR
+#### READ_ONCE
 
 ```c
 /**
- * @brief  判断一个指针是否为 Linux 内核错误指针。
+ * @brief  限制编译器对指定对象读取的合并、重复生成等优化。
+ *         本质是函数式宏。
  *
- * @param  ptr: 需要判断的指针。
+ * @param  x: 要读取的对象，通常为共享标量变量。
  *
- * @retval true: ptr 是错误指针。
- *
- * @retval false: ptr 不是错误指针。
+ * @retval x 的读取结果: 返回值类型与 x 对应。
  */
-#include <linux/err.h>
+#include <linux/compiler.h>
 
-static inline bool IS_ERR(const void *ptr);
-
+/* 宏调用形式，不是函数原型：
+ * READ_ONCE(x)
+ */
 ```
 
 ```c
-#include <linux/device.h>
-#include <linux/err.h>
-#include <linux/module.h>
+#include <linux/compiler.h>
 
-static int create_demo_class(void)
+/* 另一执行上下文可能通过 WRITE_ONCE 修改它 */
+static int data_ready;
+
+static int is_data_ready(void)
 {
-    struct class *demo_class;
-
-    demo_class = class_create(THIS_MODULE, "demo_class");
-
-    if (IS_ERR(demo_class))
-        return PTR_ERR(demo_class);
-
-    class_destroy(demo_class);
-    return 0;
+    return READ_ONCE(data_ready) != 0;
 }
-
 ```
 
-这里 IS\_ERR 判断 class\_create 返回的 demo\_class 是否是错误指针。
+READ_ONCE 不提供互斥，也不能保证“读取后清零”等多个操作组成一个不可分割的整体。需要保护复合操作时，应使用锁等同步机制。
 
-不能仅通过 demo\_class 是否等于 NULL 来判断 class\_create 是否失败。
+READ_ONCE 和 volatile 都能限制编译器对内存访问的某些优化，但影响范围不同。
+
+```c
+/* 通过该声明进行的每次读写，都具有 volatile 语义 */
+static volatile unsigned char key_events;
+```
+
+```c
+/* 普通变量，只对指定的这次读取限制优化 */
+static unsigned char key_events;
+
+unsigned char events = READ_ONCE(key_events);
+```
+
+|写法|影响范围|
+|---|---|
+|将变量声明为 volatile|通过该声明进行的每次读取和写入|
+|READ_ONCE(key_events)|只针对这一处读取|
+
+对于读取 unsigned char 变量的场景，volatile 也能达到相近目的。使用 READ_ONCE 的好处是控制范围更精确：只标记需要特殊处理的读取，其他访问仍允许正常优化。
+
+“防止编译器优化”不代表关闭全部优化，而是限制编译器对指定访问的合并、删除或复用已有读取结果等优化。
+
+#### WRITE_ONCE
+
+```c
+/**
+ * @brief  向指定对象写入值，限制编译器对这次写入的删除、
+ *         合并等优化。本质是函数式宏。
+ *
+ * @param  x: 要写入的对象，通常为共享标量变量，不是变量地址。
+ * @param  val: 要写入的值，转换为 x 的类型后写入。
+ *
+ * @retval 写入的值: 类型与 x 对应，通常不使用该返回值。
+ */
+#include <linux/compiler.h>
+
+/* 宏调用形式，不是函数原型：
+ * WRITE_ONCE(x, val)
+ */
+```
+
+once 表示“一次”：代码每执行到这里，就执行这次写入，不是整个程序只写一次。
+
+```c
+#include <linux/compiler.h>
+
+/* 可被其他执行上下文读取的状态变量 */
+static unsigned char data_ready;
+
+static void mark_data_ready(void)
+{
+    WRITE_ONCE(data_ready, 1);
+}
+```
+
+WRITE_ONCE 和 volatile 都能限制特定内存访问的编译器优化，影响范围不同：
+
+|写法|影响范围|
+|---|---|
+|将变量声明为 volatile|通过该声明进行的每次读取和写入|
+|WRITE_ONCE(x, val)|只针对这一处写入|
+|READ_ONCE(x)|只针对这一处读取|
+
+WRITE_ONCE 可以只标记需要特殊处理的写入，其他访问仍允许正常优化。它不保证其他 CPU 立即看到新值，也不保证不同变量之间的访问顺序。
+
+#### init_waitqueue_head
+
+```c
+/**
+ * @brief  初始化已经定义的等待队列头，使其处于空队列状态。
+ *         本质是函数式宏。
+ *
+ * @param  wq_head: 等待队列头指针，类型为 wait_queue_head_t *。
+ *
+ * @retval 无: 不返回结果。
+ */
+#include <linux/wait.h>
+
+/* 宏调用形式，不是函数原型：
+ * init_waitqueue_head(wq_head)
+ */
+```
+
+适合初始化结构体成员或数组中的等待队列头。
+
+```c
+#include <linux/wait.h>
+
+struct event_state {
+    wait_queue_head_t wait;
+};
+
+static struct event_state states[2];
+
+static void prepare_wait_queues(void)
+{
+    int i;
+
+    for (i = 0; i < 2; i++)
+        init_waitqueue_head(&states[i].wait);
+}
+```
+
+必须在等待、唤醒等操作之前完成初始化；不能重新初始化仍有任务等待的队列。
+
+DECLARE_WAIT_QUEUE_HEAD 是“定义并初始化”，init_waitqueue_head 是“初始化已经定义的队列头”。仅清零内存不能替代初始化。
+#### wait_event_interruptible
+
+```c
+/**
+ * @brief  条件不成立时，让当前任务进入可被信号中断的睡眠。
+ *         本质是函数式宏；条件已成立时立即返回。
+ *
+ * @param  wq: 等待队列头变量，类型为 wait_queue_head_t，不是指针。
+ * @param  condition: 等待条件表达式；非零表示条件成立。
+ *                    等待期间会重复判断，应避免带有副作用。
+ *
+ * @retval 0: 条件成立。
+ * @retval -ERESTARTSYS: 等待被信号中断。
+ */
+#include <linux/sched.h>
+#include <linux/wait.h>
+
+/* 宏调用形式，不是函数原型：
+ * wait_event_interruptible(wq, condition)
+ */
+```
+
+只能在允许睡眠的上下文中调用，不能在硬中断处理函数中调用，也不能持有自旋锁时调用。
+
+```c
+#include <linux/sched.h>
+#include <linux/wait.h>
+#include <linux/compiler.h>
+
+static DECLARE_WAIT_QUEUE_HEAD(data_wait);
+static int data_ready;
+
+/* 由允许睡眠的进程上下文调用 */
+static int wait_for_data(void)
+{
+    int ret;
+
+    /* 生产者准备好数据后设置 data_ready，并唤醒 data_wait */
+    ret = wait_event_interruptible(data_wait,
+                                  READ_ONCE(data_ready) != 0);
+    if (ret)
+        return ret;
+
+    return 0;
+}
+```
+
+返回 0 只说明等待条件成立，不会自动取出或清除设备数据。
+
+#### wake_up_interruptible
+
+```c
+/**
+ * @brief  唤醒指定等待队列中符合可中断睡眠状态的等待任务。
+ *         本质是函数式宏。
+ *
+ * @param  x: 等待队列头指针，类型为 wait_queue_head_t *。
+ *
+ * @retval 无: 不返回结果。
+ */
+#include <linux/sched.h>
+#include <linux/wait.h>
+
+#define wake_up_interruptible(x) \
+    __wake_up(x, TASK_INTERRUPTIBLE, 1, NULL)
+```
+
+先更新等待条件，再执行唤醒。被唤醒的任务需要重新判断条件，唤醒不保证条件一直成立。
+
+```c
+#include <linux/sched.h>
+#include <linux/wait.h>
+#include <linux/compiler.h>
+
+static DECLARE_WAIT_QUEUE_HEAD(data_wait);
+static int data_ready;
+
+/* 等待方检查 READ_ONCE(data_ready) != 0 */
+static void notify_data_ready(void)
+{
+    WRITE_ONCE(data_ready, 1);
+    wake_up_interruptible(&data_wait);
+}
+```
+
+可以在硬中断处理函数中调用。等待接口传队列头变量，唤醒接口传队列头地址。
+
+## **自旋锁**
+### 数据类型
+
+#### spinlock_t
+
+spinlock_t 是 Linux 内核的自旋锁类型，用于保护可能被多个执行上下文同时访问的共享数据。
+
+```c
+#include <linux/spinlock.h>
+
+/* 定义并初始化一个自旋锁 */
+static DEFINE_SPINLOCK(data_lock);
+```
+
+锁被占用时，竞争者通常忙等待。持锁期间不能执行可能睡眠的操作，例如阻塞等待或用户空间数据复制。
+
+其内部结构受内核配置影响，通常只通过自旋锁接口操作，不直接访问成员。
+
+### 函数
+#### DEFINE_SPINLOCK
+
+```c
+/**
+ * @brief  定义并初始化一个处于未锁定状态的自旋锁。
+ *         本质是函数式宏。
+ *
+ * @param  x: 要定义的自旋锁变量名，不是指针。
+ *
+ * @retval 无: 这是声明宏，不返回结果。
+ */
+#include <linux/spinlock.h>
+
+#define DEFINE_SPINLOCK(x) \
+    spinlock_t x = __SPIN_LOCK_UNLOCKED(x)
+```
+
+```c
+#include <linux/spinlock.h>
+
+static DEFINE_SPINLOCK(count_lock);
+static unsigned int count;
+
+static void increase_count(void)
+{
+    unsigned long flags;
+
+    spin_lock_irqsave(&count_lock, flags);
+    count++;
+    spin_unlock_irqrestore(&count_lock, flags);
+}
+```
+
+#### spin_lock_init
+
+```c
+/**
+ * @brief  初始化已经定义的自旋锁，使其处于未锁定状态。
+ *         本质是函数式宏，不执行加锁。
+ *
+ * @param  lock: 自旋锁指针，类型为 spinlock_t *。
+ *
+ * @retval 无: 不返回结果。
+ */
+#include <linux/spinlock.h>
+
+/* 宏调用形式，不是函数原型：
+ * spin_lock_init(lock)
+ */
+```
+
+适合初始化结构体成员或数组中的自旋锁。
+
+```c
+#include <linux/spinlock.h>
+
+struct event_state {
+    spinlock_t lock;
+    unsigned char events;
+};
+
+static struct event_state states[2];
+
+static void prepare_event_states(void)
+{
+    int i;
+
+    for (i = 0; i < 2; i++) {
+        spin_lock_init(&states[i].lock);
+        states[i].events = 0;
+    }
+}
+```
+
+必须在任何执行上下文使用锁之前初始化，不能重新初始化正在使用的锁。
+
+DEFINE_SPINLOCK 是“定义并初始化”，spin_lock_init 是“初始化已经定义的锁”。仅清零内存不能替代初始化。
+#### spin_lock
+
+```c
+/**
+ * @brief  获取自旋锁；锁被占用时忙等待，不进入睡眠。
+ *         不关闭本地中断。
+ *
+ * @param  lock: 已初始化的自旋锁指针。
+ *
+ * @retval 无: 返回类型为 void。
+ */
+#include <linux/spinlock.h>
+
+void spin_lock(spinlock_t *lock);
+```
+
+与 spin_unlock 配对使用，持锁期间不能执行可能睡眠的操作。
+
+```c
+#include <linux/spinlock.h>
+
+static DEFINE_SPINLOCK(count_lock);
+static unsigned int count;
+
+/* 假设相关访问只发生在进程上下文，
+ * 中断处理函数不使用这把锁。
+ */
+static void increase_count(void)
+{
+    spin_lock(&count_lock);
+    count++;
+    spin_unlock(&count_lock);
+}
+```
+
+如果本 CPU 的中断处理函数也获取同一把锁，进程侧仅使用 spin_lock 可能造成死锁，需要采取关闭本地中断等保护措施。
+
+#### spin_unlock
+
+```c
+/**
+ * @brief  释放当前执行者持有的自旋锁。
+ *         不负责开启或恢复本地中断。
+ *
+ * @param  lock: 要释放的自旋锁指针，应与加锁时使用的相同。
+ *
+ * @retval 无: 返回类型为 void。
+ */
+#include <linux/spinlock.h>
+
+void spin_unlock(spinlock_t *lock);
+```
+
+通常与 spin_lock 配对，不能释放尚未获取或已经释放的锁。
+
+```c
+#include <linux/spinlock.h>
+
+static DEFINE_SPINLOCK(count_lock);
+static unsigned int count;
+
+/* 假设中断处理函数不访问 count 或获取 count_lock */
+static unsigned int get_count(void)
+{
+    unsigned int value;
+
+    spin_lock(&count_lock);
+    value = count;
+    spin_unlock(&count_lock);
+
+    return value;
+}
+```
+
+#### spin_lock_irqsave
+
+```c
+/**
+ * @brief  保存本 CPU 的中断状态、关闭本地中断，并获取自旋锁。
+ *         本质是函数式宏。
+ *
+ * @param  lock: 自旋锁指针，类型为 spinlock_t *。
+ * @param  flags: unsigned long 类型变量，用于接收原中断状态。
+ *               直接传变量，不传变量地址，也不需要预先初始化。
+ *
+ * @retval 无: 不返回结果。
+ */
+#include <linux/spinlock.h>
+
+/* 宏调用形式，不是函数原型：
+ * spin_lock_irqsave(lock, flags)
+ */
+```
+
+适用于共享数据可能同时被进程上下文和硬中断上下文访问的情况。关闭的是本 CPU 的本地中断，其他 CPU 之间的互斥由自旋锁提供。
+
+```c
+#include <linux/spinlock.h>
+
+static DEFINE_SPINLOCK(data_lock);
+static unsigned int pending;
+
+static unsigned int take_pending(void)
+{
+    unsigned long flags;
+    unsigned int value;
+
+    spin_lock_irqsave(&data_lock, flags);
+    value = pending;
+    pending = 0;
+    spin_unlock_irqrestore(&data_lock, flags);
+
+    return value;
+}
+```
+
+所有需要互斥的访问路径必须使用同一把锁。
+
+#### spin_unlock_irqrestore
+
+```c
+/**
+ * @brief  释放自旋锁，并恢复本 CPU 原来的中断状态。
+ *
+ * @param  lock: 自旋锁指针，应与加锁时使用的指针相同。
+ * @param  flags: 对应 spin_lock_irqsave 保存的中断状态。
+ *
+ * @retval 无: 返回类型为 void。
+ */
+#include <linux/spinlock.h>
+
+void spin_unlock_irqrestore(spinlock_t *lock, unsigned long flags);
+```
+
+恢复原中断状态：原来开启则恢复开启，原来关闭则保持关闭。它与 spin_lock_irqsave 配对使用。
+
+```c
+#include <linux/spinlock.h>
+
+static DEFINE_SPINLOCK(count_lock);
+static unsigned int count;
+
+static void clear_count(void)
+{
+    unsigned long flags;
+
+    spin_lock_irqsave(&count_lock, flags);
+    count = 0;
+    spin_unlock_irqrestore(&count_lock, flags);
+}
+```
+
+
+## **中断**
+
+### 宏
+
+#### IRQF_TRIGGER_*
+
+```c
+#include <linux/interrupt.h>
+
+#define IRQF_TRIGGER_NONE     0x00000000 /* 不在请求中指定新的触发方式 */
+#define IRQF_TRIGGER_RISING   0x00000001 /* 上升沿触发 */
+#define IRQF_TRIGGER_FALLING  0x00000002 /* 下降沿触发 */
+#define IRQF_TRIGGER_HIGH     0x00000004 /* 高电平触发 */
+#define IRQF_TRIGGER_LOW      0x00000008 /* 低电平触发 */
+```
+
+用于 request_irq 等接口的中断标志参数。
+
+需要双边沿触发且中断控制器支持时，可以使用 IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING。
+
+### 数据类型
+#### irqreturn_t
+
+irqreturn_t 是 Linux 内核中断处理函数的返回值类型，用于告知内核本次中断的处理结果。
+
+```c
+#include <linux/irqreturn.h>
+
+enum irqreturn {
+    IRQ_NONE        = (0 << 0), /* 未处理，或中断不属于本设备 */
+    IRQ_HANDLED     = (1 << 0), /* 已处理本次中断 */
+    IRQ_WAKE_THREAD = (1 << 1), /* 请求唤醒对应的线程化中断处理函数 */
+};
+
+typedef enum irqreturn irqreturn_t;
+```
+
+IRQ_NONE、IRQ_HANDLED、IRQ_WAKE_THREAD 是枚举常量，不是宏。
+
+IRQ_WAKE_THREAD 用于线程化中断机制，不表示唤醒等待队列中的读取进程。
+
+```c
+#include <linux/interrupt.h>
+#include <linux/wait.h>
+#include <linux/compiler.h>
+
+static DECLARE_WAIT_QUEUE_HEAD(data_wait);
+static int data_ready;
+
+/* 假设该处理函数已注册到一个非共享、专用中断 */
+static irqreturn_t data_irq_handler(int irq, void *dev_data)
+{
+    WRITE_ONCE(data_ready, 1);
+    wake_up_interruptible(&data_wait);
+
+    return IRQ_HANDLED;
+}
+```
+
+### 函数
+#### request_irq
+
+```c
+/**
+ * @brief  注册中断处理函数，并申请使用指定 Linux IRQ。
+ *
+ * @param  irq: Linux IRQ 编号，不是 GPIO 引脚编号。
+ * @param  handler: 中断处理函数，类型为 irq_handler_t。
+ *                 回调形式为 irqreturn_t handler(int irq, void *dev_id)。
+ * @param  flags: 中断标志，如 IRQF_TRIGGER_FALLING；
+ *                多个兼容标志可以按位或组合。
+ * @param  name: 中断名称，可在 /proc/interrupts 中查看。
+ * @param  dev_data: 传递给中断处理函数的私有数据指针，
+ *              也用于 free_irq 识别对应注册项。
+ *              共享中断必须提供非 NULL 且能区分设备的指针。
+ *
+ * @retval 0: 注册成功。
+ * @retval 负错误码: 注册失败。
+ */
+#include <linux/interrupt.h>
+
+int request_irq(unsigned int irq, irq_handler_t handler,
+                unsigned long flags, const char *name, void *dev_data);
+```
+
+调用成功后，中断处理函数就可能执行，因此回调依赖的数据必须先准备好。
+
+```c
+#include <linux/interrupt.h>
+#include <linux/of_irq.h>
+#include <linux/errno.h>
+
+struct device_state {
+    int irq;
+    /* 其他需要在注册中断前初始化的设备状态 */
+};
+
+/* 假设这是设备的专用、非共享中断 */
+static irqreturn_t device_irq_handler(int irq, void *dev_data)
+{
+    struct device_state *state = dev_data;
+
+    /* 根据设备要求处理或确认中断；state 指向本设备状态 */
+    (void)state;
+    return IRQ_HANDLED;
+}
+
+static int setup_irq(struct device_node *node,
+                     struct device_state *state)
+{
+    int irq = of_irq_get(node, 0);
+
+    if (irq <= 0)
+        return irq < 0 ? irq : -EINVAL;
+
+    state->irq = irq;
+
+    return request_irq(irq, device_irq_handler,
+                       IRQF_TRIGGER_FALLING, "example-device", state);
+}
+```
+
+dev 指向的对象必须在中断注册期间保持有效。普通硬中断处理函数不能执行可能睡眠的操作。
+
+#### free_irq
+
+```c
+/**
+ * @brief  注销之前注册的中断处理函数，
+ *         并等待正在执行的对应中断处理结束。
+ *
+ * @param  irq: 注册时使用的 Linux IRQ 编号。
+ * @param  dev_data: 注册时传入的私有数据指针，必须与原指针一致。
+ *
+ * @retval 无: 返回类型为 void。
+ */
+#include <linux/interrupt.h>
+
+void free_irq(unsigned int irq, void *dev_data);
+```
+
+只能释放已经成功注册的中断。应在允许睡眠的上下文调用，不能在硬中断处理函数中调用。
+
+```c
+#include <linux/interrupt.h>
+
+struct device_state {
+    int irq;
+    bool irq_requested;
+};
+
+/* 注册成功后已将 irq_requested 设置为 true */
+static void release_device_irq(struct device_state *state)
+{
+    if (state->irq_requested) {
+        free_irq(state->irq, state);
+        state->irq_requested = false;
+    }
+}
+```
+
+先释放中断，再释放中断处理函数可能访问的数据或寄存器映射。
+
+#### of_irq_get
+
+```c
+/**
+ * @brief  解析设备树节点指定的中断，并获取对应 Linux IRQ 编号。
+ *
+ * @param  dev: 设备树节点指针，类型为 struct device_node *。
+ * @param  index: 该节点中断列表的索引，从 0 开始。
+ *
+ * @retval 正整数: 对应的 Linux IRQ 编号。
+ * @retval 0: IRQ 映射失败。
+ * @retval -EPROBE_DEFER: 对应的 IRQ domain 尚未建立。
+ * @retval 其他负错误码: 解析或获取失败。
+ */
+#include <linux/of_irq.h>
+
+int of_irq_get(struct device_node *dev, int index);
+```
+
+index 表示“节点中的第几个中断”，不是 GPIO 位号。
+
+```c
+#include <linux/of.h>
+#include <linux/of_irq.h>
+#include <linux/errno.h>
+
+static int get_first_irq(void)
+{
+    struct device_node *node;
+    int irq;
+
+    node = of_find_node_by_path("/example-device");
+    if (!node)
+        return -ENODEV;
+
+    irq = of_irq_get(node, 0);
+    of_node_put(node);
+
+    if (irq == 0)
+        return -EINVAL;
+
+    return irq;
+}
+```
+
+该函数只获取 IRQ 编号，不注册中断处理函数。
+
+
+
 
 ## 9.4 **文件与字符设备**
 
@@ -9575,19 +10580,26 @@ MKDEV 的作用就是把分开的主设备号和次设备号组合成一个完�
 ```c
 #include <linux/fs.h>
 
-/* Linux 4.9，省略当前未学习的成员 */
+/* Linux 4.9，仅列出当前学习的成员，省略其他成员 */
 struct file_operations {
     struct module *owner;
 
+    loff_t (*llseek)(struct file *file,
+                    loff_t offset,
+                    int whence);
+
     ssize_t (*read)(struct file *file,
-                    char __user *buf,
+                   char __user *buf,
+                   size_t count,
+                   loff_t *ppos);
+
+    ssize_t (*write)(struct file *file,
+                    const char __user *buf,
                     size_t count,
                     loff_t *ppos);
 
-    ssize_t (*write)(struct file *file,
-                     const char __user *buf,
-                     size_t count,
-                     loff_t *ppos);
+    unsigned int (*poll)(struct file *file,
+                         struct poll_table_struct *wait);
 
     int (*open)(struct inode *inode,
                 struct file *file);
@@ -9595,68 +10607,109 @@ struct file_operations {
     int (*release)(struct inode *inode,
                    struct file *file);
 
+    int (*fasync)(int fd,
+                  struct file *file,
+                  int on);
+
     /* 还有其他成员 */
 };
-
 ```
 
-struct file\_operations 用来保存一组文件操作函数指针。
+struct file_operations 保存一组文件操作函数指针。把驱动函数填入对应成员后，用户程序操作设备文件时，内核就能调用对应的处理函数。
 
-把驱动自己的函数填入对应成员后，用户程序对设备文件进行相应操作时，内核就可以找到驱动对应的处理函数。
+| 成员      | 作用                                      |
+| ------- | --------------------------------------- |
+| owner   | 指定这组文件操作所属的模块                           |
+| open    | 打开文件时调用                                 |
+| read    | 读取文件时调用                                 |
+| write   | 写入文件时调用                                 |
+| release | 最后一个文件引用释放时调用，通常发生在关闭文件时                |
+| llseek  | 处理文件位置调整；不支持定位时可使用 no_llseek            |
+| poll    | 供 poll、select、epoll 等机制检查就绪状态，并按需关联等待队列 |
+| fasync  | 开启或关闭异步通知时调用，通常使用 fasync_helper 管理登记    |
 
-| 成员 作用   |               |
-| ------- | ------------- |
-| owner   | 指定这组文件操作所属的模块 |
-| open    | 文件被打开时调用      |
-| read    | 读取文件时调用       |
-| write   | 写入文件时调用       |
-| release | 文件被关闭时调用      |
+poll 返回就绪状态的位掩码，例如 POLLIN 表示可读、POLLOUT 表示可写。它只报告状态，不代替 read、write 执行数据传输。
+
+fasync 的 fd 是文件描述符，file 是文件对象，on 非零表示开启登记，0 表示取消登记。应用通过 fcntl 改变 O_ASYNC 状态时，内核调用该回调。
+
+下面的示例只演示函数与操作表的对应关系：read 返回 0 表示文件结束，因此 poll 报告可读，读取不会阻塞。异步通知部分只演示登记与清理，没有实现发送通知。
 
 ```c
 #include <linux/fs.h>
 #include <linux/module.h>
+#include <linux/poll.h>
+
+/* 初始为 NULL，登记项由 fasync_helper 管理 */
+static struct fasync_struct *demo_async_queue;
 
 static int demo_open(struct inode *inode, struct file *file)
 {
+    return nonseekable_open(inode, file);
+}
+
+static ssize_t demo_read(struct file *file, char __user *buf,
+                         size_t size, loff_t *offset)
+{
+    return 0; /* 示例：立即返回文件结束 */
+}
+
+static ssize_t demo_write(struct file *file, const char __user *buf,
+                          size_t size, loff_t *offset)
+{
+    return 0; /* 示例未实现数据写入 */
+}
+
+static unsigned int demo_poll(struct file *file, poll_table *wait)
+{
+    /* 示例读取立即返回，无需等待队列 */
+    return POLLIN | POLLRDNORM;
+}
+
+static int demo_fasync(int fd, struct file *file, int on)
+{
+    return fasync_helper(fd, file, on, &demo_async_queue);
+}
+
+static int demo_release(struct inode *inode, struct file *file)
+{
+    /* 文件释放时取消对应的异步通知登记 */
+    demo_fasync(-1, file, 0);
     return 0;
-}
-
-static ssize_t demo_read(struct file *file, char __user *buf, size_t size, loff_t *offset)
-{
-    return 0;
-}
-
-static ssize_t demo_write (struct file *file, const char __user *buf, size_t size, loff_t *offset)
-{
-	return 0;
-}
-
-static int demo_close (struct inode *node, struct file *file)
-{
-	return 0;
 }
 
 static const struct file_operations demo_fops = {
-    .owner = THIS_MODULE,
-    .open  = demo_open,
-    .read  = demo_read,
-    .write = demo_write,
+    .owner   = THIS_MODULE,
+    .open    = demo_open,
+    .read    = demo_read,
+    .write   = demo_write,
     .release = demo_release,
+    .llseek  = no_llseek,
+    .poll    = demo_poll,
+    .fasync  = demo_fasync,
 };
-
 ```
 
-这里 demo\_open 和 demo\_read 都已经真正定义。
+poll_table 是 struct poll_table_struct 的类型别名，在 linux/poll.h 中定义。
 
-demo\_fops 的作用就是建立：
-
-```text
-open 操作 → demo_open
-read 操作 → demo_read
+操作表建立的是以下对应关系：
 
 ```
+open 操作       → demo_open
+read 操作       → demo_read
+write 操作      → demo_write
+释放文件对象    → demo_release
+定位操作        → no_llseek
+检查就绪状态    → demo_poll
+改变异步通知登记 → demo_fasync
+```
 
-这种对应关系。
+成员名由内核规定。右侧函数可以自行实现，也可以使用内核现成函数，但参数和返回值类型必须符合对应成员的要求。
+
+no_llseek 是内核已经实现的函数，直接填写即可，不需要自己定义。
+
+对实际的事件设备，poll 回调通常需要调用 poll_wait 关联等待队列，再根据事件状态返回就绪标志。
+
+fasync 回调负责管理通知登记；设备产生事件后，驱动另外调用 kill_fasync 发送通知，应用收到通知后仍需调用 read 读取数据。
 
 #### struct file
 
@@ -9703,7 +10756,7 @@ struct inode {
         struct pipe_inode_info *i_pipe;
         struct block_device *i_bdev;
         struct cdev *i_cdev;
-        char *i_link;
+        char *i_link;`
         unsigned i_dir_seq;
     };
 
@@ -9723,6 +10776,48 @@ struct inode 用来描述文件系统中的一个文件对象。
 | i\_size | 文件大小                   |
 | i\_fop  | 文件对应的 file\_operations |
 | i\_cdev | 字符设备对应的 cdev           |
+#### struct cdev
+
+```c
+#include <linux/cdev.h>
+
+/* Linux 4.9，仅列出当前学习阶段相关成员 */
+struct cdev {
+    struct module *owner;                 /* 所属模块 */
+    const struct file_operations *ops;    /* 文件操作函数 */
+    
+    /* 还有其他成员 */
+};
+```
+
+struct cdev 表示 Linux 内核中的**字符设备对象**。
+
+它用于将设备号和 file_operations 关联起来，使用户空间对设备文件的操作能够调用驱动中的对应函数。
+
+例如：
+
+```c
+struct cdev led_cdev;
+
+cdev_init(&led_cdev, &led_fops);
+
+cdev_add(&led_cdev, devno, 1);
+```
+
+关系：
+
+```c
+设备号(dev_t)
+      ↓
+struct cdev
+      ↓
+struct file_operations
+      ↓
+open/read/write 等操作函数
+```
+
+
+
 
 #### loff_t
 
@@ -9795,51 +10890,10 @@ dev_t dev;
 dev = MKDEV(major, minor);
 ```
 
-#### struct cdev
-
-```c
-#include <linux/cdev.h>
-
-/* Linux 4.9，仅列出当前学习阶段相关成员 */
-struct cdev {
-    struct module *owner;                 /* 所属模块 */
-    const struct file_operations *ops;    /* 文件操作函数 */
-    
-    /* 还有其他成员 */
-};
-```
-
-struct cdev 表示 Linux 内核中的**字符设备对象**。
-
-它用于将设备号和 file_operations 关联起来，使用户空间对设备文件的操作能够调用驱动中的对应函数。
-
-例如：
-
-```c
-struct cdev led_cdev;
-
-cdev_init(&led_cdev, &led_fops);
-
-cdev_add(&led_cdev, devno, 1);
-```
-
-关系：
-
-```c
-设备号(dev_t)
-      ↓
-struct cdev
-      ↓
-struct file_operations
-      ↓
-open/read/write 等操作函数
-```
-
-
 
 ### 函数
 
-
+#### **注册设备**
 #### register_chrdev
 
 ```c
@@ -10174,6 +11228,7 @@ void unregister_chrdev_region(dev_t from,
 
 unregister_chrdev_region 用于释放 alloc_chrdev_region() 申请的设备号。
 
+#### **获取设备号**
 #### imajor
 
 ```c
@@ -10296,6 +11351,345 @@ struct inode
     ↓ iminor() / imajor()
 次设备号 / 主设备号
 ```
+
+#### **文件操作**
+#### nonseekable_open
+
+```c
+/**
+ * @brief  在打开文件时，清除支持定位及位置式读写的相关能力标志。
+ *
+ * @param  inode: 当前打开文件对应的 inode 指针。
+ * @param  filp: 当前打开文件对应的 struct file 指针。
+ *
+ * @retval 0: 设置完成。
+ */
+#include <linux/fs.h>
+
+int nonseekable_open(struct inode *inode, struct file *filp);
+```
+
+适合没有文件偏移定位意义的字符设备。
+
+```c
+#include <linux/fs.h>
+
+static int stream_open(struct inode *inode, struct file *file)
+{
+    return nonseekable_open(inode, file);
+}
+
+static const struct file_operations stream_fops = {
+    .open   = stream_open,
+    .llseek = no_llseek,
+};
+```
+
+通常与 no_llseek 配合使用。
+
+#### no_llseek
+
+```c
+/**
+ * @brief  拒绝对文件执行偏移定位操作。
+		   no_llseek 是 Linux 内核已经实现好的函数，用于拒绝文件定位操作，不需要自己再定义。
+ *
+ * @param  file: 当前文件对象。
+ * @param  offset: 请求的偏移量。
+ * @param  whence: 定位方式，如 SEEK_SET、SEEK_CUR、SEEK_END。
+ *
+ * @retval -ESPIPE: 文件不支持定位。
+ */
+#include <linux/fs.h>
+
+loff_t no_llseek(struct file *file, loff_t offset, int whence);
+```
+
+通常直接作为 file_operations 的 llseek 回调，不需要自己调用。
+
+```c
+#include <linux/fs.h>
+
+static const struct file_operations stream_fops = {
+    .llseek = no_llseek,
+};
+```
+
+用户空间对该设备调用 lseek 时，调用失败，errno 为 ESPIPE。
+
+## **I/O多路复用(poll)**
+
+**I/O 多路复用，就是让一个线程同时等待多个文件或设备，哪个就绪，就处理哪个。**
+### 宏
+
+#### POLL*
+
+```c
+#include <linux/poll.h>
+
+/* 常用就绪状态标志 */
+POLLIN      /* 有数据可读 */
+POLLRDNORM  /* 有普通数据可读 */
+POLLPRI     /* 有高优先级数据可读 */
+POLLOUT     /* 可以写入而不阻塞 */
+POLLWRNORM  /* 可以写入普通数据而不阻塞 */
+POLLERR     /* 发生错误 */
+POLLHUP     /* 连接挂断或对端关闭等状态 */
+POLLNVAL    /* 文件描述符无效，通常由上层机制报告 */
+```
+
+驱动的 poll 回调返回就绪状态位掩码，多个状态通过按位或组合：
+
+```
+return POLLIN | POLLRDNORM; /* 报告普通数据可读 */
+```
+
+返回 0 表示当前没有报告就绪事件，不表示失败。poll 回调只报告状态，不取走数据，数据仍由 read 读取。
+### 数据类型
+
+#### poll_table
+
+poll_table 是内核传给驱动 poll 回调的辅助类型，用于关联等待队列，并携带关注的事件信息。
+
+```c
+#include <linux/poll.h>
+
+/* Linux 4.9 系列定义 */
+typedef struct poll_table_struct {
+    poll_queue_proc _qproc; /* 关联等待队列的回调函数 */
+    unsigned long _key;    /* 关注的事件位掩码 */
+} poll_table;
+```
+
+poll_table 是 struct poll_table_struct 的类型别名，下面两个指针类型相同：
+
+```c
+poll_table *wait;
+struct poll_table_struct *wait;
+```
+
+驱动通常直接将收到的指针传给 poll_wait，不自行创建，也不直接修改其内部成员。
+
+poll_table 不是等待队列头，不能代替 wait_queue_head_t。
+### 函数
+
+#### poll_wait
+
+```c
+/**
+ * @brief  通过内核传入的 poll_table 关联设备等待队列，
+ *         为就绪状态变化时的通知建立联系。本身不让当前任务睡眠。
+ *
+ * @param  filp: 当前文件对象，由驱动 poll 回调接收。
+ * @param  wait_address: 设备等待队列头的地址。
+ * @param  p: 内核传给驱动 poll 回调的 poll_table 指针；
+ *            为 NULL 时不执行关联操作。
+ *
+ * @retval 无: 返回类型为 void。
+ */
+#include <linux/poll.h>
+
+static inline void poll_wait(struct file *filp,
+                             wait_queue_head_t *wait_address,
+                             poll_table *p);
+```
+
+通常先调用 poll_wait，再检查设备是否就绪，避免检查与建立等待关系之间错过通知。
+
+```c
+#include <linux/fs.h>
+#include <linux/poll.h>
+#include <linux/wait.h>
+#include <linux/spinlock.h>
+
+static DECLARE_WAIT_QUEUE_HEAD(data_wait);
+static DEFINE_SPINLOCK(data_lock);
+static unsigned int pending;
+
+/* 生产者在 data_lock 保护下增加 pending，
+ * 随后调用 wake_up_interruptible(&data_wait)。
+ */
+static unsigned int demo_poll(struct file *file, poll_table *wait)
+{
+    unsigned long flags;
+    unsigned int mask = 0;
+
+    poll_wait(file, &data_wait, wait);
+
+    spin_lock_irqsave(&data_lock, flags);
+    if (pending)
+        mask = POLLIN | POLLRDNORM;
+    spin_unlock_irqrestore(&data_lock, flags);
+
+    return mask;
+}
+```
+
+此回调只检查 pending，不清零、不消费数据。上层 poll/select 等机制根据就绪状态、超时等条件决定是否等待；设备状态改变后，驱动通过对应等待队列通知等待者。
+
+## **异步通知**
+
+### 宏
+#### POLL_*
+
+```c
+#include <linux/signal.h>
+
+POLL_IN  /* 有输入数据可读 */
+POLL_OUT /* 可以输出数据，即可写 */
+POLL_PRI /* 有高优先级输入数据可读 */
+POLL_ERR /* 发生 I/O 错误 */
+POLL_HUP /* 连接挂断或断开 */
+POLL_MSG /* 有输入消息可用，较少使用 */
+```
+
+用于 kill_fasync 的 band 参数，说明此次通知的原因。通常传入其中一个原因，不像 poll 就绪位掩码那样按位或组合。
+
+|异步信号通知原因|poll 就绪标志|
+|---|---|
+|POLL_IN|POLLIN|
+|POLL_OUT|POLLOUT|
+|POLL_PRI|POLLPRI|
+|POLL_ERR|POLLERR|
+|POLL_HUP|POLLHUP|
+
+两组名称相似，但用途不同，不能混用。按键产生可读事件时，使用 SIGIO 配合 POLL_IN。
+#### SIGIO(详见"7.4 信号")
+
+```c
+/* Linux 内核代码 */
+#include <linux/signal.h>
+
+/* 用户空间代码 */
+#include <signal.h>
+
+SIGIO /* 异步 I/O 通知信号，表示可以检查相关 I/O 状态 */
+```
+
+驱动可以通过 kill_fasync 发送 SIGIO，通知应用检查并读取设备数据。
+
+应用需要先设置好信号处理方式、通知接收者，并开启 O_ASYNC。Linux 中 SIGIO 的默认动作是终止进程。
+
+普通 SIGIO 不可靠累计次数，不能将收到的信号数量当作设备事件数量；实际事件应以驱动保存并通过 read 返回的数据为准。
+
+### 数据类型
+#### struct fasync_struct
+
+struct fasync_struct 是异步通知登记链表的节点，用于记录开启异步通知的文件。
+
+```c
+#include <linux/fs.h>
+
+/* 仅列出当前需要理解的成员 */
+struct fasync_struct {
+    int fa_fd;                       /* 登记的文件描述符 */
+    struct fasync_struct *fa_next;    /* 下一个登记项 */
+    struct file *fa_file;             /* 对应的文件对象 */
+
+    /* 省略锁、校验标记和 RCU 等成员 */
+};
+```
+
+驱动通常只保存链表头指针，初始为 NULL：
+
+```c
+static struct fasync_struct *async_queue;
+```
+
+通过 fasync_helper 管理登记，通过 kill_fasync 发送通知，通常不直接操作链表节点。
+
+它保存的是通知登记信息，不保存设备事件数据，也不是等待队列。
+
+### 函数
+#### fasync_helper
+
+```c
+/**
+ * @brief  添加、更新或删除文件的异步通知登记。
+ *
+ * @param  fd: 当前文件描述符，由驱动的 fasync 回调接收；
+ *             关闭文件时取消登记通常传 -1。
+ * @param  filp: 要登记或取消登记的文件对象。
+ * @param  on: 非零表示开启登记，0 表示取消登记。
+ * @param  fapp: 异步通知链表头指针的地址，
+ *               类型为 struct fasync_struct **。
+ *
+ * @retval 正数: 添加或删除了登记项。 
+			   这里的“正数”具体就是 1，表示这次确实新增或删除了一个异步通知登记项。
+ * @retval 0: 没有添加、删除登记项，可能更新了已有项。
+ * @retval 负错误码: 操作失败，如 -ENOMEM。
+ */
+#include <linux/fs.h>
+
+int fasync_helper(int fd, struct file *filp, int on,
+                  struct fasync_struct **fapp);
+```
+
+```c
+#include <linux/fs.h>
+
+static struct fasync_struct *async_queue;
+
+static int demo_fasync(int fd, struct file *file, int on)
+{
+    return fasync_helper(fd, file, on, &async_queue);
+}
+
+static int demo_release(struct inode *inode, struct file *file)
+{
+    demo_fasync(-1, file, 0);
+    return 0;
+}
+
+static const struct file_operations demo_fops = {
+    .fasync  = demo_fasync,
+    .release = demo_release,
+};
+```
+
+应用通过 fcntl 改变 O_ASYNC 状态时，内核调用驱动的 fasync 回调。文件释放时应清理对应登记。
+
+开启登记可能分配内存，不能在硬中断处理函数中调用。
+
+#### kill_fasync
+
+```c
+/**
+ * @brief  向异步通知链表中各文件所指定的接收者发送通知。
+ *
+ * @param  fp: 异步通知链表头指针的地址。
+ * @param  sig: 通知信号，通常使用 SIGIO。
+ * @param  band: 通知原因，如 POLL_IN 表示有数据可读。
+ *
+ * @retval 无: 返回类型为 void。
+ */
+#include <linux/fs.h>
+
+void kill_fasync(struct fasync_struct **fp, int sig, int band);
+```
+
+```
+#include <linux/fs.h>
+#include <linux/signal.h>
+
+static struct fasync_struct *async_queue;
+
+/* 供 file_operations 的 fasync 成员使用 */
+static int demo_fasync(int fd, struct file *file, int on)
+{
+    return fasync_helper(fd, file, on, &async_queue);
+}
+
+/* 设备已经保存好可读数据后调用 */
+static void notify_data_ready(void)
+{
+    kill_fasync(&async_queue, SIGIO, POLL_IN);
+}
+```
+
+可以从中断上下文发送通知。应先保存设备数据或事件状态，再通知应用。
+
+链表头为 NULL 时不发送通知。该函数只通知接收者，不传输设备数据，也不消费事件；应用仍需调用 read。
 
 ## 9.5 **Linux 设备模型**
 
@@ -10723,7 +12117,7 @@ devno
 
 这样才能明确看出 device\_create 和 device\_destroy 之间的对应关系。
 
-## 9.6 **I/O 内存映射与寄存器访问**
+## 9.6 **内存映射与寄存器访问**
 
 Linux 驱动中，访问 GPIO、UART、I2C 等外设寄存器时，通常需要先将寄存器的物理地址映射为内核虚拟地址，再通过专用的 I/O 访问接口读写寄存器。本节整理外设寄存器地址映射和访问相关内容。
 
@@ -11486,135 +12880,7 @@ struct platform_driver
 
 struct device_driver 是 Linux 设备模型中的**通用驱动对象**；struct platform_driver、PCI 驱动、USB 驱动等则是在它的基础上增加各自总线所需的信息。
 
-#### struct device_node
 
-```c
-#include <linux/of.h>
-
-/* Linux 4.9，仅列出当前学习阶段相关成员 */
-struct device_node {
-    const char *name;                  /* 节点名称 */
-
-    struct property *properties;       /* 节点属性 */
-
-    struct device_node *parent;        /* 父节点 */
-    struct device_node *child;         /* 子节点 */
-    struct device_node *sibling;       /* 同级节点 */
-
-    /* 还有其他成员 */
-};
-```
-
-`struct device_node` 表示 Linux 内核中的**设备树节点对象**。
-
-设备树中的节点：
-
-```
-led {
-    compatible = "100ask,led";
-    status = "okay";
-};
-```
-
-经过内核解析后，会转换成：
-
-```
-设备树节点
-      ↓
-struct device_node
-```
-
----
-
-成员说明：
-
-| 成员         | 说明       |
-| ---------- | -------- |
-| name       | 节点名称     |
-| properties | 保存该节点的属性 |
-| parent     | 指向父节点    |
-| child      | 指向第一个子节点 |
-| sibling    | 指向同级节点   |
-
----
-
-例如设备树：
-
-```
-/
-└── led {
-        compatible = "100ask,led";
-        status = "okay";
-    };
-```
-
-内核中对应：
-
-```
-struct device_node
-
-        led节点
-
-        |
-        ├── compatible
-        |
-        └── status
-```
-
-驱动可以通过 `struct device_node` 获取设备树中的硬件描述信息。
-
----
-
-在驱动中的使用：
-
-通常在 `probe()` 中获取设备树节点：
-
-```
-static int led_probe(struct platform_device *pdev)
-{
-    struct device_node *np;
-
-    np = pdev->dev.of_node;
-
-    return 0;
-}
-```
-
-获取节点后，可以读取设备树中的：
-
-```
-compatible
-reg
-interrupts
-gpios
-clocks
-```
-
-等属性。
-
----
-
-简单理解：
-
-```
-.dts
-设备树源码
-
-      ↓ 编译
-
-.dtb
-设备树二进制文件
-
-      ↓ 内核解析
-
-struct device_node
-
-      ↓
-
-驱动读取硬件信息
-```
-
-`struct device_node` 是连接**设备树描述的硬件信息**和**驱动程序**之间的数据结构。
 ### 函数
 #### platform_device_register
 
@@ -11970,7 +13236,7 @@ IORESOURCE_DMA
 
 例如：
 
-```
+```c
 static struct resource demo_resources[] = {
     {
         .start = 0x10000000,
@@ -12078,7 +13344,9 @@ platform_get_resource() 返回的是**资源结构体指针**，不是 start 的
 **编译设备树文件**
 ```
 cd /home/book/100ask_imx6ull-sdk/Buildroot_2020.02.x/output/build/linux-origin_master
+```
 
+```
 make ARCH=arm CROSS_COMPILE=arm-buildroot-linux-gnueabihf- 100ask_imx6ull-14x14.dtb
 ```
 
@@ -12087,6 +13355,138 @@ make ARCH=arm CROSS_COMPILE=arm-buildroot-linux-gnueabihf- 100ask_imx6ull-14x14.
 adb push arch/arm/boot/dts/100ask_imx6ull-14x14.dtb /boot/100ask_imx6ull-14x14.dtb
 ```
 ### 数据类型
+
+#### struct device_node
+
+```c
+#include <linux/of.h>
+
+/* Linux 4.9，仅列出当前学习阶段相关成员 */
+struct device_node {
+    const char *name;                  /* 节点名称 */
+	const char *full_name;           /* 节点完整路径，如 /keys/key1@20c406c */
+	
+    struct property *properties;       /* 节点属性 */
+
+    struct device_node *parent;        /* 父节点 */
+    struct device_node *child;         /* 子节点 */
+    struct device_node *sibling;       /* 同级节点 */
+
+    /* 还有其他成员 */
+};
+```
+
+`struct device_node` 表示 Linux 内核中的**设备树节点对象**。
+
+设备树中的节点：
+
+```
+led {
+    compatible = "100ask,led";
+    status = "okay";
+};
+```
+
+经过内核解析后，会转换成：
+
+```
+设备树节点
+      ↓
+struct device_node
+```
+
+---
+
+成员说明：
+
+| 成员         | 说明       |
+| ---------- | -------- |
+| name       | 节点名称     |
+| properties | 保存该节点的属性 |
+| parent     | 指向父节点    |
+| child      | 指向第一个子节点 |
+| sibling    | 指向同级节点   |
+
+---
+
+例如设备树：
+
+```
+/
+└── led {
+        compatible = "100ask,led";
+        status = "okay";
+    };
+```
+
+内核中对应：
+
+```
+struct device_node
+
+        led节点
+
+        |
+        ├── compatible
+        |
+        └── status
+```
+
+驱动可以通过 `struct device_node` 获取设备树中的硬件描述信息。
+
+---
+
+在驱动中的使用：
+
+通常在 `probe()` 中获取设备树节点：
+
+```
+static int led_probe(struct platform_device *pdev)
+{
+    struct device_node *np;
+
+    np = pdev->dev.of_node;
+
+    return 0;
+}
+```
+
+获取节点后，可以读取设备树中的：
+
+```
+compatible
+reg
+interrupts
+gpios
+clocks
+```
+
+等属性。
+
+---
+
+简单理解：
+
+```
+.dts
+设备树源码
+
+      ↓ 编译
+
+.dtb
+设备树二进制文件
+
+      ↓ 内核解析
+
+struct device_node
+
+      ↓
+
+驱动读取硬件信息
+```
+
+`struct device_node` 是连接**设备树描述的硬件信息**和**驱动程序**之间的数据结构。
+
 #### struct property
 
 用于描述设备树节点中的一个属性，保存属性名称、属性值以及属性长度等信息。
@@ -12200,6 +13600,189 @@ of_node_put(node);
 - of_node_put()：使用完毕后释放该引用，避免引用计数无法正常减少。
     
 - 一个成功获取的节点引用，在不再需要时应对应调用一次 of_node_put()。
+
+#### for_each_child_of_node
+
+```c
+/**
+ * @brief  遍历父节点的所有直接子节点，不递归遍历，
+ *         也不会自动跳过 status 为 "disabled" 的节点。
+ *
+ * @param  parent: 父节点指针，类型为 struct device_node *。
+ * @param  child:  子节点指针变量，类型为 struct device_node *，
+ *                 每次循环指向当前子节点。
+ *
+ * @retval 无：本质是展开为 for 循环的宏，没有返回值。
+ */
+#include <linux/of.h>
+
+#define for_each_child_of_node(parent, child) \
+    for (child = of_get_next_child(parent, NULL); child != NULL; \
+         child = of_get_next_child(parent, child))
+```
+
+正常遍历结束时，子节点引用会自动释放；使用 break、return 或 goto 提前退出时，需要先调用 of_node_put(child)。
+
+```c
+struct device_node *parent;
+struct device_node *child;
+
+parent = of_find_node_by_path("/keys");
+if (parent) {
+    for_each_child_of_node(parent, child) {
+        pr_info("子节点：%s\n", child->name);
+    }
+
+    of_node_put(parent); /* 释放查找父节点时获取的引用 */
+}
+```
+
+#### for_each_available_child_of_node
+
+```c
+/**
+ * @brief  遍历父节点的所有可用直接子节点，本质是函数式宏。
+ *         不是递归遍历，不会继续遍历孙节点。
+ *
+ * @param  parent: 父节点指针。
+ * @param  child: struct device_node * 类型变量，
+ *                每轮指向当前子节点，不需要提前初始化。
+ *
+ * @retval 无: 展开为 for 循环，不返回结果。
+ */
+#include <linux/of.h>
+
+#define for_each_available_child_of_node(parent, child) \
+    for (child = of_get_next_available_child(parent, NULL); \
+         child != NULL; \
+         child = of_get_next_available_child(parent, child))
+```
+
+没有 status 属性，或 status 为 "okay"、"ok" 的子节点会被遍历；其他状态会被跳过。
+
+```c
+#include <linux/of.h>
+#include <linux/errno.h>
+
+static int count_available_children(void)
+{
+    struct device_node *parent;
+    struct device_node *child;
+    int count = 0;
+
+    parent = of_find_node_by_path("/example-bus");
+    if (!parent)
+        return -ENODEV;
+
+    for_each_available_child_of_node(parent, child) {
+        count++;
+    }
+
+    of_node_put(parent);
+    return count;
+}
+```
+
+正常遍历结束或使用 continue 时，循环会自动归还当前子节点引用，不要在循环体中重复释放。
+
+如果通过 break、return 或 goto 提前离开循环，必须先调用 of_node_put(child)，归还当前子节点引用。父节点引用仍需单独管理。
+
+
+#### of_device_is_available
+
+```c
+/**
+ * @brief  根据设备树节点的 status 属性，判断该节点是否可用。
+ *
+ * @param  device: 要检查的设备树节点指针。
+ *
+ * @retval true: 节点存在，且没有 status 属性，
+ *               或 status 为 "okay"、"ok"。
+ * @retval false: 节点为 NULL，或 status 为其他值。
+ */
+#include <linux/of.h>
+
+bool of_device_is_available(const struct device_node *device);
+```
+
+|status 属性|返回值|
+|---|---|
+|未设置|true|
+|"okay" 或 "ok"|true|
+|"disabled" 等其他值|false|
+
+该函数只检查节点状态，不初始化硬件，也不判断硬件是否实际正常工作。禁用状态的规范写法是 "disabled"。
+
+```c
+#include <linux/of.h>
+#include <linux/errno.h>
+
+static int check_device_node(void)
+{
+    struct device_node *node;
+    int ret = 0;
+
+    node = of_find_node_by_path("/example-device");
+    if (!node)
+        return -ENODEV;
+
+    if (!of_device_is_available(node))
+        ret = -ENODEV;
+
+    of_node_put(node);
+    return ret;
+}
+```
+
+
+#### of_device_is_compatible
+
+```c
+/**
+ * @brief  判断设备树节点的 compatible 属性中，
+ *         是否包含指定的兼容字符串。
+ *
+ * @param  device: 要检查的设备树节点指针。
+ * @param  compat: 要匹配的非空兼容字符串，如 "vendor,device"。
+ *
+ * @retval 正整数: 匹配成功，返回匹配分值。
+ * @retval 0: 未匹配到指定字符串。
+ */
+#include <linux/of.h>
+
+int of_device_is_compatible(const struct device_node *device,
+                            const char *compat);
+```
+
+compatible 可以包含多个字符串，匹配其中任意一个即可：
+
+```
+compatible = "vendor,device-v2", "vendor,device";
+```
+
+判断成功时，直接使用返回值作为条件，或判断是否大于 0，不要写成 == 1。
+
+```c
+#include <linux/of.h>
+#include <linux/errno.h>
+
+static int check_device_compatible(void)
+{
+    struct device_node *node;
+    int matched;
+
+    node = of_find_node_by_path("/example-device");
+    if (!node)
+        return -ENODEV;
+
+    matched = of_device_is_compatible(node, "vendor,device");
+    of_node_put(node);
+
+    return matched > 0 ? 0 : -ENODEV;
+}
+```
+
+该函数检查的是 compatible 属性，不是节点名称，也不检查 status。判断节点是否可用，应使用 of_device_is_available。
 #### of_property_read_string
 
 ```c
@@ -12315,7 +13898,7 @@ void __iomem *of_iomap(
 
 例如设备树：
 
-```
+```c
 reg = <0x10000000 0x04
        0x10001000 0x04>;
 ```
@@ -12330,11 +13913,6 @@ reg = <0x10000000 0x04
 返回的地址可以通过 readl()、writel() 等函数访问寄存器。
 
 **使用完毕后，需要调用 iounmap() 解除映射。**
-
-
-
-
-
 
 ## **设备树基础语法**
 
@@ -12364,6 +13942,49 @@ property    → 属性名
 "value"     → 属性值
 ```
 
+实例：
+```
+/dts-v1/;
+
+#include <dt-bindings/input/input.h>
+#include "imx6ull.dtsi"
+
+/ {
+
+    #address-cells = <1>;
+    #size-cells = <1>;
+    keys {
+        compatible = "vanix,keys";
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges;
+        
+        key1@20c406c {
+            compatible = "vanix,key1";
+            status = "okay";
+            interrupt-parent = <&gpio5>;
+            interrupts = <1 2>; /* GPIO5_IO01，下降沿触发 */
+            reg = < 0x020c406c 0x04 /* CCM_CCGR1 [31:30] = 11 */
+                    0x0229000c 0x04 /* SW_MUX_GPIO5_IO01 [2:0] = 101 */
+                    0x020ac000 0x04 /* GPIO5_DR */
+                    0x020ac004 0x04>; /* GPIO5_GDIR */
+        };
+        key2@20c4074 {
+            compatible = "vanix,key2";
+            status = "okay";
+            interrupt-parent = <&gpio4>;
+            interrupts = <14 2>; /* GPIO4_IO14，下降沿触发 */
+            reg = < 0x020c4074 0x04 /* CCM_CCGR3 [13:12] = 11 */ 
+                    0x020e01b0 0x04 /* SW_MUX_GPIO4_IO14 [3:0] = 0101 */
+                    0x020a8000 0x04 /* GPIO4_DR */
+                    0x020a8004 0x04>; /* GPIO4_GDIR */
+        };
+
+    };
+};
+
+
+```
 ### 2. 属性值
 
 ```dts
@@ -12403,27 +14024,15 @@ uart1:     → 定义标签
 &uart1     → 引用该标签对应的节点
 ```
 
-节点完整路径从根节点开始表示：
-
-```text
-/
-└── soc
-    └── i2c@21a0000
-        └── sensor@50
-```
-
-```text
-/soc
-/soc/i2c@21a0000
-/soc/i2c@21a0000/sensor@50
-```
-
 ### 4. 常用属性
 
 ```dts
 compatible = "vendor,device";   /* 设备兼容信息，可用于驱动匹配 */
 status = "okay";                /* 启用设备 */
 status = "disabled";            /* 禁用设备 */
+
+interrupt-parent = <&gpio5>;  /* 指定当前中断归 GPIO5 控制器管理 */
+interrupts = <1 2>; /* GPIO5_IO01，下降沿触发 */
 ```
 
 ### 5. 地址与资源描述
@@ -12482,13 +14091,13 @@ memory
 ```
 #  imax6ull寄存器
 
-## GPIO 与物理引脚引脚复用关系查询
+## **GPIO 引脚查询**
 
 查找某个 GPIO 或物理引脚可以复用成哪些功能时，可以查看 **4.1.1 Muxing Options**。该表集中列出了各外设信号、对应的物理引脚以及所使用的 ALT 复用模式。
 
-## GPIO内存映射表
+## **GPIO 内存映射表**
 ![[GPIO内存映射表.png]]
-## GPIO使能寄存器目录
+## **GPIO(CCM_CCGRx)目录**
 ![[GPIO使能寄存器目录.png]]
 
 

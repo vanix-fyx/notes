@@ -1061,7 +1061,7 @@ PTHREAD_RWLOCK_WRITER_NONRECURSIVE_INITIALIZER_NP // 初始化偏向写线程的
 ## 1.6 C信号量
 
 ### 基本使用流程
-```
+```c
 
 #include <semaphore.h>
 
@@ -1105,7 +1105,7 @@ sem_destroy()
 
 ### sem_init
 
-```
+```c
 /**
  * @brief  初始化一个未命名信号量。
  *
@@ -1128,7 +1128,7 @@ int sem_init(sem_t *sem, int pshared, unsigned int value);
 
 线程之间使用时通常写成：
 
-```
+```c
 sem_t sem;
 
 sem_init(&sem, 0, 1);
@@ -1145,7 +1145,7 @@ sem_init(&sem, 0, 1);
 
 ### sem_wait
 
-```
+```c
 /**
  * @brief  获取信号量，使信号量值减 1。
  *
@@ -1177,7 +1177,7 @@ int sem_wait(sem_t *sem);
 
 基本用法：
 
-```
+```c
 sem_wait(&sem);
 
 /* 操作共享资源 */
@@ -1189,7 +1189,7 @@ sem_post(&sem);
 
 ### sem_post
 
-```
+```c
 /**
  * @brief  释放信号量，使信号量值加 1。
  *
@@ -1212,7 +1212,7 @@ sem_post 会使信号量值增加。
 
 ### sem_destroy
 
-```
+```c
 /**
  * @brief  销毁一个由 sem_init 初始化的未命名信号量。
  *
@@ -1668,6 +1668,44 @@ if (sscanf(str, "%d,%d", &a, &b) == 2)
 
 使用 * 跳过的数据不会计入返回值。
 
+### snprintf
+
+```c
+/**
+ * @brief  将格式化结果写入字符缓冲区，并限制写入大小。
+ *
+ * @param  buf: 接收结果的字符缓冲区。
+ * @param  size: 缓冲区可写入的字节数，包括结尾的 '\0'。
+ * @param  fmt: 格式字符串，如 "key%d"。
+ * @param  ...: 与格式说明符对应的参数。
+ *
+ * @retval 非负整数: 完整结果所需的字符数，不包括结尾的 '\0'。
+ *                   返回值小于 size，表示结果完整写入；
+ *                   返回值大于等于 size，表示空间不足。
+ */
+#include <linux/kernel.h>
+
+int snprintf(char *buf, size_t size, const char *fmt, ...);
+```
+
+size 大于 0 且参数有效时，最多写入 size - 1 个结果字符，并添加结尾的 '\0'。空间不足时，结果被截断，返回值仍表示完整结果所需的字符数。
+
+```c
+#include <linux/kernel.h>
+
+char name[16];
+int i = 0;
+int len;
+
+len = snprintf(name, sizeof(name), "key%d", i + 1);
+/* name 为 "key1"，len 为 4 */
+```
+
+snprintf 把结果保存到缓冲区，不直接打印。
+
+内核中使用 linux/kernel.h；用户空间使用同名的 C 标准库函数时，应包含 stdio.h。
+
+如果将生成的字符串传给 request_irq 作为中断名称，缓冲区必须在中断注册期间持续有效，不能使用初始化函数中返回后失效的局部数组。
 # 2 基础知识
 ## 2.1 函数指针
 

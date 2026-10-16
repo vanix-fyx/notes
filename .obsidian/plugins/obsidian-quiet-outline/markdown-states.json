@@ -169,11 +169,11 @@
   "Linux/更改说明.md": {
     "cursor": {
       "from": {
-        "line": 11,
-        "ch": 25
+        "line": 17,
+        "ch": 37
       },
       "to": {
-        "line": 6,
+        "line": 11,
         "ch": 0
       }
     },
@@ -211,45 +211,65 @@
     }
   },
   "_README/笔记格式要求.md": {
-    "expandedKeys": [],
-    "cursor": {
-      "from": {
-        "line": 20,
-        "ch": 2
-      },
-      "to": {
-        "line": 20,
-        "ch": 0
-      }
-    },
-    "scroll": 42.82382133995037
-  },
-  "Linux/00_Linux笔记.md": {
     "expandedKeys": [
-      "item-1-336",
-      "item-3-415",
-      "item-2-413",
-      "item-1-0",
-      "item-2-54",
-      "item-3-417",
-      "item-2-423",
-      "item-3-407",
-      "item-3-391",
-      "item-2-379",
-      "item-2-355",
-      "item-3-367"
+      "item-1-6"
     ],
     "cursor": {
       "from": {
-        "line": 10032,
+        "line": 234,
+        "ch": 16
+      },
+      "to": {
+        "line": 234,
+        "ch": 16
+      }
+    },
+    "scroll": 221.60189573459715
+  },
+  "Linux/00_Linux笔记.md": {
+    "expandedKeys": [
+      "item-1-183",
+      "item-3-197",
+      "item-3-201",
+      "item-3-208",
+      "item-2-195",
+      "item-2-216",
+      "item-3-217",
+      "item-4-219",
+      "item-2-184",
+      "item-3-191",
+      "item-3-185",
+      "item-4-186",
+      "item-3-223",
+      "item-2-225",
+      "item-3-226",
+      "item-1-146",
+      "item-2-149",
+      "item-1-349",
+      "item-2-387",
+      "item-3-392",
+      "item-2-367",
+      "item-3-370",
+      "item-2-432",
+      "item-3-438",
+      "item-3-436",
+      "item-1-289",
+      "item-1-339",
+      "item-3-356",
+      "item-2-351",
+      "item-1-342"
+    ],
+    "cursor": {
+      "from": {
+        "line": 9064,
         "ch": 0
       },
       "to": {
-        "line": 10032,
+        "line": 9064,
         "ch": 0
       }
     },
-    "scroll": 10011.103422619048
+    "scroll": 9044.420386178153
   },
   "_README/笔记格式提示词_精简第五章.md": {
     "expandedKeys": [],
@@ -318,21 +338,70 @@
   "c++/c.md": {
     "expandedKeys": [
       "item-1-0",
-      "item-1-56",
-      "item-1-53",
-      "item-3-42",
-      "item-2-40"
+      "item-1-57",
+      "item-1-54",
+      "item-2-40",
+      "item-2-31",
+      "item-2-37",
+      "item-3-28",
+      "item-2-20",
+      "item-2-18"
     ],
     "cursor": {
       "from": {
-        "line": 1680,
-        "ch": 8
+        "line": 694,
+        "ch": 0
       },
       "to": {
-        "line": 1680,
-        "ch": 8
+        "line": 694,
+        "ch": 0
       }
     },
-    "scroll": 1653.8268229166667
+    "scroll": 674.546875
+  },
+  "问题解决记录/未命名.md": {
+    "expandedKeys": [],
+    "scroll": 0
+  },
+  "问题解决记录/VS Code.md": {
+    "cursor": {
+      "from": {
+        "line": 0,
+        "ch": 0
+      },
+      "to": {
+        "line": 0,
+        "ch": 0
+      }
+    },
+    "expandedKeys": [],
+    "scroll": 0
+  },
+  "问题解决记录/Readme.md": {
+    "cursor": {
+      "from": {
+        "line": 0,
+        "ch": 0
+      },
+      "to": {
+        "line": 0,
+        "ch": 0
+      }
+    },
+    "expandedKeys": []
+  },
+  "问题解决记录/设计思想.md": {
+    "cursor": {
+      "from": {
+        "line": 21,
+        "ch": 0
+      },
+      "to": {
+        "line": 21,
+        "ch": 0
+      }
+    },
+    "expandedKeys": [],
+    "scroll": 12.128255208333334
   }
 }
