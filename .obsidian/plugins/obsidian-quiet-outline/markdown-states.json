@@ -169,11 +169,11 @@
   "Linux/更改说明.md": {
     "cursor": {
       "from": {
-        "line": 17,
-        "ch": 37
+        "line": 16,
+        "ch": 25
       },
       "to": {
-        "line": 11,
+        "line": 13,
         "ch": 0
       }
     },
@@ -216,60 +216,32 @@
     ],
     "cursor": {
       "from": {
-        "line": 234,
-        "ch": 16
+        "line": 244,
+        "ch": 1
       },
       "to": {
-        "line": 234,
-        "ch": 16
+        "line": 244,
+        "ch": 1
       }
     },
-    "scroll": 221.60189573459715
+    "scroll": 0
   },
   "Linux/00_Linux笔记.md": {
     "expandedKeys": [
-      "item-1-183",
-      "item-3-197",
-      "item-3-201",
-      "item-3-208",
-      "item-2-195",
-      "item-2-216",
-      "item-3-217",
-      "item-4-219",
-      "item-2-184",
-      "item-3-191",
-      "item-3-185",
-      "item-4-186",
-      "item-3-223",
-      "item-2-225",
-      "item-3-226",
-      "item-1-146",
-      "item-2-149",
-      "item-1-349",
-      "item-2-387",
-      "item-3-392",
-      "item-2-367",
-      "item-3-370",
-      "item-2-432",
-      "item-3-438",
-      "item-3-436",
-      "item-1-289",
-      "item-1-339",
-      "item-3-356",
-      "item-2-351",
-      "item-1-342"
+      "item-1-543",
+      "item-2-547"
     ],
     "cursor": {
       "from": {
-        "line": 9064,
+        "line": 15690,
         "ch": 0
       },
       "to": {
-        "line": 9064,
+        "line": 15690,
         "ch": 0
       }
     },
-    "scroll": 9044.420386178153
+    "scroll": 15639.925291828793
   },
   "_README/笔记格式提示词_精简第五章.md": {
     "expandedKeys": [],
@@ -366,16 +338,18 @@
   "问题解决记录/VS Code.md": {
     "cursor": {
       "from": {
-        "line": 0,
+        "line": 80,
         "ch": 0
       },
       "to": {
-        "line": 0,
+        "line": 80,
         "ch": 0
       }
     },
-    "expandedKeys": [],
-    "scroll": 0
+    "expandedKeys": [
+      "item-1-0"
+    ],
+    "scroll": 64.40625
   },
   "问题解决记录/Readme.md": {
     "cursor": {

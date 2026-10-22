@@ -9063,22 +9063,57 @@ if (ret < 0)
 ```
 
 # **应用层错误处理**
-### 宏
-#### EINTR
 
-```c
+用户空间的 open、read 等接口失败时，通常返回 -1，并通过 errno 表示具体原因。
+
+应先根据函数返回值确认失败，再检查 errno；成功调用不一定会将 errno 清零。具体返回规则以各接口定义为准。
+
+### 宏
+
+#### errno
+
+```
 #include <errno.h>
 
-EINTR /* 系统调用被信号中断 */
+/* 表示当前线程的错误码，可像 int 变量一样读写 */
+errno
 ```
 
-用户空间系统调用失败时，通常返回 -1，并通过 errno 表示具体错误。应先确认调用失败，再检查 errno。
+errno 是宏，不要自己定义同名变量，也不要使用 extern int errno 声明它。
 
-```c
+errno 不是函数返回值，应在确认调用失败后读取。如果后面还要调用其他函数，先保存错误码，避免被覆盖。
+
+```
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+
+int fd = open("/dev/example", O_RDONLY);
+
+if (fd == -1) {
+    int saved_errno = errno;
+
+    fprintf(stderr, "open failed: %s\n",
+            strerror(saved_errno));
+}
+```
+
+#### EINTR
+
+```
+#include <errno.h>
+
+EINTR /* 调用被信号中断 */
+```
+
+接口因信号中断而失败时，可根据接口规则和程序需求决定是否重试。
+
+```
 #include <unistd.h>
 #include <errno.h>
 
-/* fd 是已经成功打开的文件描述符 */
+/* fd 是已打开的文件描述符，buf 指向有效缓冲区 */
 static ssize_t read_retry(int fd, void *buf, size_t size)
 {
     ssize_t ret;
@@ -9091,14 +9126,220 @@ static ssize_t read_retry(int fd, void *buf, size_t size)
 }
 ```
 
+read 已成功读取部分数据时，会返回读取的字节数，不应丢弃这部分结果重新读取。
+
+#### EXIT_*
+
+```
+#include <stdlib.h>
+
+EXIT_SUCCESS /* 程序正常结束 */
+EXIT_FAILURE /* 程序执行失败 */
+```
+
+用于 main 的返回值或 exit 的参数，表示程序退出状态，不表示某个具体的 errno 错误码。
+
+```
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(int argc, char *argv[])
+{
+    if (argc != 2) {
+        fprintf(stderr, "usage: %s <file>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
+}
+```
+
+### 函数
+
+#### perror
+
+```
+/**
+ * @brief  将当前 errno 对应的错误说明输出到标准错误。
+ *
+ * @param  s: 自定义提示信息；非空字符串后会自动添加冒号和空格。
+ *
+ * @retval 无: 函数没有返回值。
+ */
+#include <stdio.h>
+
+void perror(const char *s);
+```
+
+输出形式通常为：
+
+```
+自定义提示信息: errno 对应的错误说明
+```
+
+自动添加换行，不需要在 s 中添加 \n。s 不是格式字符串，不支持通过 %d 等方式传入参数。
+
+```
+#include <fcntl.h>
+#include <stdio.h>
+#include <unistd.h>
+
+static int open_device(void)
+{
+    int fd = open("/dev/example", O_RDONLY);
+
+    if (fd == -1) {
+        perror("open /dev/example");
+        return -1;
+    }
+
+    close(fd);
+    return 0;
+}
+```
+
+应在失败后及时调用；perror 只输出信息，不会自动退出程序。
+
+#### strerror
+
+```
+/**
+ * @brief  将指定的错误码转换为错误说明字符串。
+ *
+ * @param  errnum: 错误码，例如 errno、EINVAL 或保存的错误码。
+ *
+ * @retval 字符串指针: 指向错误说明，不需要自行释放。
+ */
+#include <string.h>
+
+char *strerror(int errnum);
+```
+
+strerror 返回字符串，不负责输出。不要修改或 free 返回的字符串，也不要依赖其内容在后续调用后保持不变。
+
+```
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+
+static int open_device(void)
+{
+    const char *path = "/dev/example";
+    int fd = open(path, O_RDONLY);
+
+    if (fd == -1) {
+        int saved_errno = errno;
+
+        fprintf(stderr, "open %s failed: %s\n",
+                path, strerror(saved_errno));
+    }
+
+    return fd;
+}
+```
+
+perror 根据当前 errno 直接输出；strerror 根据传入的错误码返回字符串，适合自定义输出格式。
+
+部分接口，例如很多 pthread 接口，会直接返回错误码，此时应将其返回值传给 strerror，而不是读取 errno。
+
+#### fprintf
+
+```
+/**
+ * @brief  向指定文件流输出格式化文本。
+ *
+ * @param  stream: 目标文件流；错误信息通常输出到 stderr。
+ * @param  format: 格式字符串。
+ * @param  ...: 与格式字符串对应的可变参数。
+ *
+ * @retval 非负数: 成功输出的字符数。
+ * @retval 负数: 输出失败。
+ */
+#include <stdio.h>
+
+int fprintf(FILE *stream, const char *format, ...);
+```
+
+fprintf 是通用格式化输出函数；配合 stderr，常用于输出参数错误和自定义错误信息。
+
+```
+#include <errno.h>
+#include <stdio.h>
+
+static int check_count(int count)
+{
+    if (count <= 0) {
+        fprintf(stderr, "invalid count: %d\n", count);
+        return -1;
+    }
+
+    return 0;
+}
+```
+
+fprintf 不会自动读取 errno，也不会自动添加换行。
+
+#### exit
+
+```
+/**
+ * @brief  正常终止整个进程，执行已注册的退出处理并刷新、关闭标准 I/O 流。
+ *
+ * @param  status: 退出状态，通常使用 EXIT_SUCCESS 或 EXIT_FAILURE。
+ *
+ * @retval 无: 函数不会返回。
+ */
+#include <stdlib.h>
+
+void exit(int status);
+```
+
+exit 会结束整个进程，而不是只结束当前函数。
+
+```
+#include <stdio.h>
+#include <stdlib.h>
+
+static void check_arguments(int argc)
+{
+    if (argc != 2) {
+        fprintf(stderr, "one argument is required\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    check_arguments(argc);
+
+    return EXIT_SUCCESS;
+}
+```
+
+通常让底层函数返回错误，由上层决定是否退出；在 main 中可以直接 return EXIT_FAILURE。
+
 # **驱动层错误处理**
+
+内核接口常见的失败表示方式有：
+
+|返回类型|常见失败表示|判断方式|
+|---|---|---|
+|整数|负错误码|ret < 0|
+|普通指针|NULL|!ptr|
+|支持错误指针的指针|错误指针|IS_ERR(ptr)|
+
+必须根据具体接口的返回规则判断，不能将所有指针接口都按同一种方式处理。
+
+用户空间使用 errno；内核驱动通常直接返回负错误码，不使用用户空间的 errno 机制。
+
 ### 宏
 
 #### 常见错误码
 
 错误码是表示失败原因的整数宏，使用名称即可，不需要记具体数值。
 
-```c
+```
 /* 用户空间使用 */
 #include <errno.h>
 
@@ -9107,121 +9348,177 @@ static ssize_t read_retry(int fd, void *buf, size_t size)
 
 /* 以下列出宏名及含义，不是重新定义 */
 EINVAL       /* 参数不合法 */
-ENOMEM       /* 内存不足，无法分配内存 */
+ENOMEM       /* 内存不足 */
 ENODEV       /* 没有对应设备 */
-ENOENT       /* 文件或目录不存在 */
+ENOENT       /* 请求的对象不存在，例如文件、目录或属性 */
 EBADF        /* 文件描述符无效 */
 EFAULT       /* 内存地址无效或无法访问 */
 EBUSY        /* 设备或资源正忙 */
-EAGAIN       /* 资源暂时不可用，可稍后重试 */
-EWOULDBLOCK  /* 操作需要阻塞；Linux 中与 EAGAIN 值相同 */
+EAGAIN       /* 暂时无法完成，可稍后重试 */
+EWOULDBLOCK  /* 操作会阻塞；Linux 中与 EAGAIN 值相同 */
 EINTR        /* 调用被信号中断 */
 EIO          /* 输入输出错误 */
 ETIMEDOUT    /* 操作超时 */
 EACCES       /* 访问权限不足 */
 EPERM        /* 操作不被允许 */
 EEXIST       /* 要创建的对象已经存在 */
-ENOSPC       /* 设备存储空间不足 */
-EMFILE       /* 当前进程打开的文件数量达到限制 */
-ENFILE       /* 系统打开的文件数量达到限制 */
+ENOSPC       /* 存储空间或其他资源容量不足 */
+EMFILE       /* 当前进程打开的文件描述符数量达到限制 */
+ENFILE       /* 系统打开文件数量达到限制 */
 ESPIPE       /* 不支持文件定位操作 */
 ENOSYS       /* 功能或系统调用未实现 */
 EOPNOTSUPP   /* 不支持该操作 */
+ENOTTY       /* 对该设备不适用的 ioctl 请求 */
+EPIPE        /* 管道或连接已断开，或管道没有读取端 */
+ERANGE       /* 结果超出允许范围 */
+EOVERFLOW    /* 数值或结果无法用目标类型表示 */
+
+/* 以下主要由内核内部使用 */
+EPROBE_DEFER /* 探测依赖暂未就绪，请求稍后重新探测 */
+ERESTARTSYS /* 内核内部用于可中断等待等场景的重启处理 */
 ```
 
 内核接口通常返回负错误码：
 
-```c
+```
 return -EINVAL;
 ```
 
 用户空间的 open、read 等调用失败时，通常返回 -1，并将具体错误码保存到 errno：
 
-```c
+```
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
 #include <stdio.h>
 
-int fd = open("/dev/example", O_RDONLY);
+static int check_device(void)
+{
+    int fd = open("/dev/example", O_RDONLY);
 
-if (fd == -1) {
-    if (errno == ENOENT)
-        printf("设备文件不存在\n");
-    else
-        perror("open");
-} else {
+    if (fd == -1) {
+        if (errno == ENOENT)
+            fprintf(stderr, "设备文件不存在\n");
+        else
+            perror("open");
+
+        return -1;
+    }
+
     close(fd);
+    return 0;
 }
 ```
 
-先根据函数返回值确认失败，再检查 errno；成功调用不一定会将 errno 清零。具体返回规则以各接口定义为准。
+先根据函数返回值确认失败，再检查 errno；成功调用不一定会将 errno 清零。
+
+EPROBE_DEFER 表示依赖的资源或提供者暂未准备好，驱动通常应保留并返回这个错误码。
+
+ERESTARTSYS 由内核处理，用户空间通常表现为调用被重新执行，或收到 EINTR，而不是直接看到 ERESTARTSYS。
+
 ### 函数
+
+#### ERR_PTR
+
+```
+/**
+ * @brief  将负错误码编码成错误指针。
+ *
+ * @param  error: 负错误码，例如 -EINVAL、-ENOMEM。
+ *
+ * @retval 错误指针: 保存错误码的特殊指针值，不能解引用。
+ */
+#include <linux/err.h>
+
+static inline void *ERR_PTR(long error);
+```
+
+用于通过指针返回值传递错误。只应在接口约定使用错误指针时使用。
+
+```
+#include <linux/err.h>
+#include <linux/errno.h>
+#include <linux/slab.h>
+
+static int *alloc_value(int initial)
+{
+    int *value;
+
+    if (initial < 0)
+        return ERR_PTR(-EINVAL);
+
+    value = kmalloc(sizeof(*value), GFP_KERNEL);
+    if (!value)
+        return ERR_PTR(-ENOMEM);
+
+    *value = initial;
+    return value;
+}
+```
+
+ERR_PTR 不分配内存，只编码错误码。调用者应先通过 IS_ERR 判断，再访问返回对象。
+
 #### PTR_ERR
 
-```c
+```
 /**
- * @brief  从 Linux 内核错误指针中取出其中保存的错误码。
+ * @brief  从 Linux 内核错误指针中取出保存的错误码。
  *
- * @param  ptr: 错误指针。
+ * @param  ptr: 已确认是错误指针的指针。
  *
- * @retval 返回错误指针中保存的错误码，通常为负数。
+ * @retval 负错误码: 错误指针中保存的错误码。
  */
 #include <linux/err.h>
 
 static inline long PTR_ERR(const void *ptr);
-
 ```
 
-```c
+```
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/module.h>
+#include <linux/printk.h>
 
 static int create_demo_class(void)
 {
     struct class *demo_class;
+    long err;
 
     demo_class = class_create(THIS_MODULE, "demo_class");
-
-    if (IS_ERR(demo_class))
-
-    {
-        err = PTR_ERR(demo_class);
-        printk("class_create failed, err = %d\n", err);
-
-        return err;    
-    }
+    if (IS_ERR(demo_class)) {
+        err = PTR_ERR(demo_class);
+        pr_err("class_create failed: %ld\n", err);
+        return err;
+    }
 
     class_destroy(demo_class);
     return 0;
 }
-
 ```
 
-这里 demo\_class 来自 class\_create。
+这里 demo_class 来自 Linux 4.9 的 class_create。
 
-如果 class\_create 失败，demo\_class 中保存的不是正常 class 地址，而是错误指针；PTR\_ERR 把其中的错误码取出来作为函数返回值。
+如果失败，demo_class 保存的是错误指针；PTR_ERR 取出其中的错误码，作为函数返回值。
+
+不要对正常指针使用 PTR_ERR 来判断是否失败。
 
 #### IS_ERR
 
-```c
+```
 /**
  * @brief  判断一个指针是否为 Linux 内核错误指针。
  *
  * @param  ptr: 需要判断的指针。
  *
  * @retval true: ptr 是错误指针。
- *
  * @retval false: ptr 不是错误指针。
  */
 #include <linux/err.h>
 
 static inline bool IS_ERR(const void *ptr);
-
 ```
 
-```c
+```
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/module.h>
@@ -9231,23 +9528,143 @@ static int create_demo_class(void)
     struct class *demo_class;
 
     demo_class = class_create(THIS_MODULE, "demo_class");
-
     if (IS_ERR(demo_class))
         return PTR_ERR(demo_class);
 
     class_destroy(demo_class);
     return 0;
 }
-
 ```
 
-这里 IS\_ERR 判断 class\_create 返回的 demo\_class 是否是错误指针。
+不能仅通过是否等于 NULL 判断 class_create 是否失败。
 
-不能仅通过 demo\_class 是否等于 NULL 来判断 class\_create 是否失败。
+IS_ERR(NULL) 为 false；IS_ERR 不判断指针是否悬空，也不保证指针可以安全访问。
+
+#### IS_ERR_OR_NULL
+
+```
+/**
+ * @brief  判断指针是否为错误指针或 NULL。
+ *
+ * @param  ptr: 需要判断的指针。
+ *
+ * @retval true: ptr 是错误指针或 NULL。
+ * @retval false: ptr 既不是错误指针，也不是 NULL。
+ */
+#include <linux/err.h>
+
+static inline bool IS_ERR_OR_NULL(const void *ptr);
+```
+
+适用于确实需要同时排除错误指针和 NULL 的场景，不能替代对接口返回规则的理解。
+
+```
+#include <linux/device.h>
+#include <linux/err.h>
+#include <linux/gpio/consumer.h>
+
+/* 示例中将“未配置可选 GPIO”和“获取失败”都视为不可使用 */
+static bool has_enable_gpio(struct device *dev)
+{
+    struct gpio_desc *gpio;
+
+    gpio = devm_gpiod_get_optional(dev, "enable", GPIOD_OUT_LOW);
+
+    return !IS_ERR_OR_NULL(gpio);
+}
+```
+
+上例只判断是否可用，丢弃了具体错误原因。正式初始化流程通常应分别处理错误指针和 NULL，保留错误码。
+
+NULL 不包含错误码，PTR_ERR(NULL) 得到 0，不能将其当成失败原因返回。
+
+#### PTR_ERR_OR_ZERO
+
+```
+/**
+ * @brief  如果指针是错误指针，返回其中的错误码；否则返回 0。
+ *
+ * @param  ptr: 需要检查的指针。
+ *
+ * @retval 负错误码: ptr 是错误指针。
+ * @retval 0: ptr 不是错误指针，包括 ptr 为 NULL 的情况。
+ */
+#include <linux/err.h>
+
+static inline int PTR_ERR_OR_ZERO(const void *ptr);
+```
+
+适用于“错误指针表示失败，其他返回值都按成功处理”的场景。
+
+```
+#include <linux/device.h>
+#include <linux/err.h>
+#include <linux/gpio/consumer.h>
+
+struct output_data {
+    struct gpio_desc *gpio;
+};
+
+/* data 由调用者提供，用于保存获取结果 */
+static int setup_output(struct device *dev, struct output_data *data)
+{
+    data->gpio = devm_gpiod_get(dev, "enable", GPIOD_OUT_LOW);
+
+    return PTR_ERR_OR_ZERO(data->gpio);
+}
+```
+
+等价于：
+
+```
+if (IS_ERR(data->gpio))
+    return PTR_ERR(data->gpio);
+
+return 0;
+```
+
+不能用它检查以 NULL 表示失败的内存分配接口。
+
+#### printk
+
+```
+/**
+ * @brief  输出内核日志。
+ *
+ * @param  fmt: 格式字符串，可在开头指定日志级别。
+ * @param  ...: 与格式字符串对应的可变参数。
+ *
+ * @retval int: 返回日志输出字符数，通常忽略。
+ */
+#include <linux/printk.h>
+
+int printk(const char *fmt, ...);
+```
+
+```
+#include <linux/errno.h>
+#include <linux/printk.h>
+
+static int check_count(unsigned int count)
+{
+    if (count == 0) {
+        printk(KERN_ERR "invalid count: %u\n", count);
+        return -EINVAL;
+    }
+
+    return 0;
+}
+```
+
+KERN_ERR 直接放在字符串前面，中间不加逗号。
+
+常见级别有 KERN_ERR、KERN_WARNING、KERN_INFO、KERN_DEBUG；日常代码也可以直接使用对应的 pr_err、pr_warn、pr_info、pr_debug。
+
+日志可通过 dmesg 查看；是否立即显示到控制台取决于控制台日志级别等设置。
 
 #### pr_err
 
-```c
+```
 /**
  * @brief  输出错误级别的内核日志，本质是函数式宏。
  *
@@ -9262,9 +9679,7 @@ static int create_demo_class(void)
     printk(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__)
 ```
 
-日志可以通过 dmesg 查看，是否立即显示到控制台取决于控制台日志级别。字符串末尾通常加 \n。
-
-```c
+```
 #include <linux/of.h>
 #include <linux/errno.h>
 #include <linux/printk.h>
@@ -9285,12 +9700,139 @@ static int check_device_node(void)
 }
 ```
 
-pr_err 只记录日志，不会自动退出函数或返回错误码；错误处理需要另外编写。
+日志可通过 dmesg 查看；是否立即显示到控制台取决于控制台日志级别。字符串末尾通常加 \n。
 
+pr_err 只记录日志，不会自动退出函数或返回错误码。
+
+#### pr_warn
+
+```
+/**
+ * @brief  输出警告级别的内核日志，本质是函数式宏。
+ *
+ * @param  fmt: 格式字符串，通常以 \n 结尾。
+ * @param  ...: 与格式字符串对应的可变参数，可省略。
+ *
+ * @retval int: 底层 printk 返回的日志输出字符数，通常忽略。
+ */
+#include <linux/printk.h>
+
+#define pr_warn(fmt, ...) \
+    printk(KERN_WARNING pr_fmt(fmt), ##__VA_ARGS__)
+```
+
+通常用于值得关注、但程序仍可继续运行的情况。
+
+```
+#include <linux/printk.h>
+
+static unsigned int select_timeout(unsigned int timeout_ms)
+{
+    if (timeout_ms == 0) {
+        pr_warn("timeout is zero, using 100 ms\n");
+        timeout_ms = 100;
+    }
+
+    return timeout_ms;
+}
+```
+
+pr_warn 不会自动修改返回值或中止执行。
+
+#### dev_err
+
+```
+/**
+ * @brief  输出带设备信息的错误级别内核日志，本质是函数式宏。
+ *
+ * @param  dev: 关联设备的 struct device 指针。
+ * @param  fmt: 格式字符串，支持 %d、%s 等格式，通常以 \n 结尾。
+ * @param  ...: 与格式字符串对应的可变参数。
+ *
+ * @retval 无: 不返回错误码。
+ */
+#include <linux/device.h>
+
+#define dev_err(dev, fmt, ...) \
+    _dev_err(dev, dev_fmt(fmt), ##__VA_ARGS__)
+```
+
+日志级别为 KERN_ERR，通常自动附带驱动名称和设备名称，方便定位错误来源。
+
+```
+#include <linux/device.h>
+#include <linux/err.h>
+#include <linux/gpio/consumer.h>
+
+/* 在 probe 中调用，dev 指向当前设备 */
+static int setup_output(struct device *dev)
+{
+    struct gpio_desc *gpio;
+    int ret;
+
+    gpio = devm_gpiod_get(dev, "enable", GPIOD_OUT_LOW);
+    if (IS_ERR(gpio)) {
+        ret = PTR_ERR(gpio);
+        dev_err(dev, "failed to get enable GPIO: %d\n", ret);
+        return ret;
+    }
+
+    return 0;
+}
+```
+
+dev_err 只输出日志，不会自动结束函数或返回错误。
+
+可通过 dmesg 查看；是否立即显示在控制台上取决于控制台日志级别等设置。
+
+有明确的设备对象时，通常优先使用 dev_err；没有合适设备对象时，可以使用 pr_err。
+
+#### dev_warn
+
+```
+/**
+ * @brief  输出带设备信息的警告级别内核日志，本质是函数式宏。
+ *
+ * @param  dev: 关联设备的 struct device 指针。
+ * @param  fmt: 格式字符串，通常以 \n 结尾。
+ * @param  ...: 与格式字符串对应的可变参数。
+ *
+ * @retval 无: 不返回错误码。
+ */
+#include <linux/device.h>
+
+#define dev_warn(dev, fmt, ...) \
+    _dev_warn(dev, dev_fmt(fmt), ##__VA_ARGS__)
+```
+
+通常用于设备配置不理想，但仍可采用默认配置继续工作的情况。
+
+```
+#include <linux/device.h>
+#include <linux/of.h>
+#include <linux/types.h>
+
+/* dev 指向当前设备，设备可能提供 timeout-ms 属性 */
+static u32 read_timeout(struct device *dev)
+{
+    u32 timeout_ms;
+
+    if (of_property_read_u32(dev->of_node, "timeout-ms",
+                             &timeout_ms)) {
+        dev_warn(dev, "timeout-ms unavailable, using 100 ms\n");
+        timeout_ms = 100;
+    }
+
+    return timeout_ms;
+}
+```
+
+dev_warn 自动附带设备信息，但不会自动执行恢复操作；使用默认值等处理仍需自行编写。
 # 9 Linux 驱动开发
 
-## 9.1 **写驱动设备流程**
+## 9.1 **设备驱动流程**
 
+### 基础字符设备驱动流程
 记录字符设备驱动源码从准备、实现文件操作，到注册设备、释放资源以及指定模块入口和出口的基本编写顺序。
 
 ```
@@ -9323,6 +9865,64 @@ pr_err 只记录日志，不会自动退出函数或返回错误码；错误处�
 
 ```
 
+### pinctrl 与 GPIO 字符设备驱动流程
+
+记录使用设备树、platform_driver、pinctrl 和 GPIO 子系统编写字符设备驱动的基本顺序。
+
+```
+开始编写驱动
+        ↓
+① 配置设备树
+   ├── compatible          指定设备匹配信息
+   ├── pinctrl 配置         指定引脚复用与电气属性
+   └── led-gpios           指定 GPIO 和有效电平
+        ↓
+② 基础准备
+   ├── 包含内核头文件
+   └── 定义设备结构体、GPIO 描述符、锁等
+        ↓
+③ 实现文件操作
+   ├── open / read / write / release
+   ├── 使用 GPIO 接口读取状态、控制亮灭
+   └── 填入 struct file_operations
+        ↓
+④ 实现 probe：初始化设备
+   ├── devm_gpiod_get()       申请 GPIO、设置方向和初始值
+   ├── alloc_chrdev_region()  申请设备号
+   ├── cdev_init()            初始化字符设备
+   ├── cdev_add()             注册字符设备
+   ├── class_create()         创建设备类
+   └── device_create()        创建设备入口
+        ↓
+⑤ 实现 remove：释放设备资源
+   ├── 停止 GPIO 访问、熄灭 LED
+   ├── device_destroy()
+   ├── class_destroy()
+   ├── cdev_del()
+   └── unregister_chrdev_region()
+       GPIO 随后由 devm 机制自动释放
+        ↓
+⑥ 定义匹配表和驱动
+   ├── struct of_device_id    填写 compatible 匹配表
+   ├── MODULE_DEVICE_TABLE()  提供模块自动加载所需信息
+   └── struct platform_driver
+       ├── .probe            指向初始化函数
+       ├── .remove           指向资源释放函数
+       └── .driver.of_match_table
+                             指向设备树匹配表
+        ↓
+⑦ 指定模块注册方式
+   ├── module_platform_driver()
+   │   ├── 自动生成模块入口：注册 platform 驱动
+   │   └── 自动生成模块出口：注销 platform 驱动
+   └── MODULE_LICENSE()
+        ↓
+驱动源码完成
+```
+
+这是编写顺序。运行时，内核匹配设备与驱动后，在调用 probe 前处理默认 pinctrl 状态；设备解除绑定时调用 remove。
+
+使用 module_platform_driver 后，不再另外编写 module_init、module_exit。初始化失败时，需要回收已经申请的非 devm 资源。
 ## 9.2 **内核基础**
 
 整理驱动开发中最基础的内核模块、初始化与退出标记以及内核日志相关内容。
@@ -9485,6 +10085,7 @@ module_exit(demo_exit);
 ```
 
 这里先真正定义了 demo\_exit，然后通过 module\_exit 把它指定为模块退出入口。
+
 
 #### printk
 
@@ -10026,6 +10627,176 @@ static void notify_data_ready(void)
 ```
 
 可以在硬中断处理函数中调用。等待接口传队列头变量，唤醒接口传队列头地址。
+## **互斥锁**
+
+### 数据类型
+
+#### mutex
+
+Linux 内核的互斥锁结构体，用于保存锁状态、等待者等内部信息。
+
+```c
+#include <linux/mutex.h>
+
+/* 定义一个互斥锁对象，此时尚未初始化 */
+struct mutex lock;
+```
+
+通过 DEFINE_MUTEX 在定义时初始化，或者通过 mutex_init 初始化已有对象。内部成员由内核管理，不直接修改。
+
+可以将锁放入设备结构体，保护对应设备的数据：
+
+```c
+struct device_data {
+    struct mutex lock;
+    int value;
+};
+```
+
+每个结构体实例拥有自己的锁；初始化后再用于并发访问。不能通过清零内存或复制其他锁来代替初始化。
+
+### 函数
+
+#### DEFINE_MUTEX
+
+```c
+/**
+ * @brief  定义一个互斥锁对象，并初始化为未加锁状态。
+ * @param  mutexname: 要定义的锁变量名称，不是指针。
+ * @retval 无返回值: 宏展开为变量定义。
+ */
+#include <linux/mutex.h>
+
+#define DEFINE_MUTEX(mutexname) \
+    struct mutex mutexname = __MUTEX_INITIALIZER(mutexname)
+```
+
+本质是函数式宏，常用于定义文件作用域的锁，无需再调用 mutex_init。
+
+```c
+static DEFINE_MUTEX(value_lock);
+static int shared_value;
+
+static void set_value(int value)
+{
+    mutex_lock(&value_lock);
+    shared_value = value;
+    mutex_unlock(&value_lock);
+}
+```
+
+其他并发访问 shared_value 的流程也应使用 value_lock。
+
+#### mutex_init
+
+```c
+/**
+ * @brief  将已有互斥锁对象初始化为未加锁状态。
+ * @param  lock: 指向待初始化的 struct mutex 对象。
+ * @retval 无返回值。
+ */
+#include <linux/mutex.h>
+
+/* 函数式宏的调用形式，lock 为结构体指针 */
+mutex_init(lock);
+```
+
+本质是函数式宏，常用于初始化设备结构体中的锁，必须在其他流程开始使用该锁之前调用。
+
+```c
+struct device_data {
+    struct mutex lock;
+    int value;
+};
+
+static struct device_data data;
+
+static void init_data(void)
+{
+    mutex_init(&data.lock);
+    data.value = 0;
+}
+```
+
+已经通过 DEFINE_MUTEX 初始化的锁不需要再调用它。不能重新初始化正在使用的锁。
+
+#### mutex_lock
+
+```c
+/**
+ * @brief  获取互斥锁；锁被占用时，可能休眠等待，直到获取成功。
+ * @param  lock: 指向已初始化的互斥锁。
+ * @retval 无返回值: 正常返回时，当前任务已持有锁。
+ */
+#include <linux/mutex.h>
+
+void mutex_lock(struct mutex *lock);
+```
+
+只能在允许休眠的进程上下文调用。等待不会因普通信号到达而返回中断错误。
+
+```c
+static DEFINE_MUTEX(value_lock);
+static int shared_value;
+
+static int get_value(void)
+{
+    int value;
+
+    mutex_lock(&value_lock);
+    value = shared_value;
+    mutex_unlock(&value_lock);
+
+    return value;
+}
+```
+
+这里在锁内取得共享数据的副本，解锁后返回局部变量。
+
+启用 CONFIG_DEBUG_LOCK_ALLOC 时，mutex_lock 会通过宏映射到带锁依赖检查的实现，使用方式不变。
+
+#### mutex_unlock
+
+```c
+/**
+ * @brief  释放当前任务持有的互斥锁，让其他等待者有机会获取锁。
+ * @param  lock: 指向当前任务已经持有的互斥锁。
+ * @retval 无返回值。
+ */
+#include <linux/mutex.h>
+
+void mutex_unlock(struct mutex *lock);
+```
+
+只能由持锁任务解锁。加锁成功后，每条退出路径都必须正确解锁。
+
+```c
+#include <linux/errno.h>
+
+static DEFINE_MUTEX(device_lock);
+static bool online;
+
+static int check_device(void)
+{
+    int ret = 0;
+
+    mutex_lock(&device_lock);
+
+    if (!online) {
+        ret = -ENODEV;
+        goto out;
+    }
+
+    /* 设备可用时的处理 */
+
+out:
+    mutex_unlock(&device_lock);
+    return ret;
+}
+```
+
+通过统一出口，避免某条错误返回路径遗漏解锁，导致其他任务一直等待。
+
 
 ## **自旋锁**
 ### 数据类型
@@ -10044,6 +10815,7 @@ static DEFINE_SPINLOCK(data_lock);
 锁被占用时，竞争者通常忙等待。持锁期间不能执行可能睡眠的操作，例如阻塞等待或用户空间数据复制。
 
 其内部结构受内核配置影响，通常只通过自旋锁接口操作，不直接访问成员。
+
 
 ### 函数
 #### DEFINE_SPINLOCK
@@ -10335,6 +11107,28 @@ static irqreturn_t data_irq_handler(int irq, void *dev_data)
 }
 ```
 
+#### irq_handler_t
+
+```c
+#include <linux/interrupt.h>
+
+typedef irqreturn_t (*irq_handler_t)(int, void *);
+```
+
+中断处理函数指针类型，用于描述中断处理函数的参数和返回值类型。
+
+示例：
+
+```c
+static irqreturn_t key_irq_handler(int irq, void *dev_id)
+{
+    /* 处理按键中断 */
+    return IRQ_HANDLED;
+}
+```
+
+request_irq() 和 devm_request_irq() 等接口通过该类型接收中断处理函数。
+
 ### 函数
 #### request_irq
 
@@ -10399,6 +11193,7 @@ static int setup_irq(struct device_node *node,
 ```
 
 dev 指向的对象必须在中断注册期间保持有效。普通硬中断处理函数不能执行可能睡眠的操作。
+
 
 #### free_irq
 
@@ -10486,6 +11281,75 @@ static int get_first_irq(void)
 
 该函数只获取 IRQ 编号，不注册中断处理函数。
 
+#### gpiod_to_irq
+
+```c
+/**
+ * @brief  将 GPIO 描述符转换为对应的中断号。
+ *
+ * @param  desc: GPIO 描述符指针。
+ *
+ * @retval 非负数: 转换成功，返回中断号。
+ * @retval 负数: 转换失败，返回错误码。
+ */
+#include <linux/gpio/consumer.h>
+
+int gpiod_to_irq(const struct gpio_desc *desc);
+```
+
+示例：
+
+```c
+/* key_gpiod 已通过 devm_gpiod_get() 获取 */
+int irq = gpiod_to_irq(key_gpiod);
+
+if (irq < 0)
+    return irq;
+```
+
+该函数只负责获取中断号，不会申请中断或注册中断处理函数。
+
+#### devm_request_irq
+
+```c
+/**
+ * @brief  申请中断并注册中断处理函数，由设备资源管理机制自动释放。
+ *
+ * @param  dev: 拥有该中断资源的设备。
+ * @param  irq: 中断号。
+ * @param  handler: 中断处理函数。
+ * @param  irqflags: 中断触发方式等标志。
+ * @param  devname: 中断名称。
+ * @param  dev_id: 传递给中断处理函数的设备数据指针。
+ *
+ * @retval 0: 申请成功。
+ * @retval 负数: 申请失败，返回错误码。
+ */
+#include <linux/interrupt.h>
+
+int devm_request_irq(struct device *dev,
+                     unsigned int irq,
+                     irq_handler_t handler,
+                     unsigned long irqflags,
+                     const char *devname,
+                     void *dev_id);
+```
+
+示例：
+
+```c
+/* irq 已通过 gpiod_to_irq() 获取 */
+ret = devm_request_irq(&pdev->dev, irq,
+                       key_irq_handler,
+                       IRQF_TRIGGER_RISING |
+                       IRQF_TRIGGER_FALLING,
+                       "key", key_gpiod);
+
+if (ret < 0)
+    return ret;
+```
+
+dev_id 会作为参数传给中断处理函数。使用 devm_request_irq() 申请的中断，在设备资源释放时由内核自动释放，通常不需要手动调用 free_irq()。
 
 
 
@@ -11016,6 +11880,7 @@ static void demo(void)
 ```
 
 这里的 major 不是凭空出现的，而是前面的 register\_chrdev 注册成功后得到的主设备号。
+
 
 #### register_chrdev_region
 
@@ -12284,6 +13149,8 @@ iounmap(gpio5_gdir);
 
 ## 9.7 **总线设备驱动模型**
 
+Linux 通过总线组织设备和驱动，按照匹配规则将两者关联起来，并在设备探测、解除绑定时调用对应的驱动函数。本节整理设备与驱动的注册、匹配及资源管理相关内容。
+
 ### 宏
 #### IORESOURCE_*
 
@@ -12792,40 +13659,58 @@ struct device_driver {
     struct bus_type *bus;                 /* 驱动所属的总线 */
     struct module *owner;                 /* 所属内核模块 */
 
+    bool suppress_bind_attrs;            /* 是否禁止创建 sysfs bind/unbind 入口 */
+
     const struct of_device_id *of_match_table; /* 设备树匹配表 */
 
-    int  (*probe)(struct device *dev);    /* 匹配成功后调用 */
+    int  (*probe)(struct device *dev);    /* 匹配后进行设备探测 */
     int  (*remove)(struct device *dev);   /* 设备与驱动分离时调用 */
-    void (*shutdown)(struct device *dev); /* 系统关机时调用 */
+    void (*shutdown)(struct device *dev); /* 系统关机或重启时调用 */
 
-    const struct dev_pm_ops *pm;          /* 电源管理操作 */
+    const struct dev_pm_ops *pm;         /* 电源管理操作 */
 
     /* 还有其他成员 */
 };
 ```
 
-| 成员             | 说明                     |
-| -------------- | ---------------------- |
-| name           | 驱动名称，可以参与设备与驱动的匹配      |
-| bus            | 指向该驱动所属的总线             |
-| owner          | 指向拥有该驱动的内核模块           |
-| of_match_table | 设备树匹配表，用于描述该驱动支持的设备树设备 |
-| probe          | 设备与驱动匹配成功后调用           |
-| remove         | 设备与驱动解除绑定时调用           |
-| shutdown       | 系统关机或重启时调用             |
-| pm             | 驱动的电源管理操作              |
+|成员|说明|
+|---|---|
+|name|驱动名称，可以参与设备与驱动的匹配|
+|bus|指向该驱动所属的总线|
+|owner|指向拥有该驱动的内核模块|
+|suppress_bind_attrs|是否禁止创建 sysfs 的手动绑定、解绑入口|
+|of_match_table|设备树匹配表，用于描述该驱动支持的设备树设备|
+|probe|设备与驱动匹配后调用，成功返回才完成绑定|
+|remove|设备与驱动解除绑定时调用|
+|shutdown|系统关机或重启时调用|
+|pm|驱动的电源管理操作|
+
+suppress_bind_attrs 中，suppress 表示“抑制”，bind 表示“绑定”，attrs 表示“属性”。
+
+|取值|含义|
+|---|---|
+|false|通常创建 bind、unbind 属性文件，允许用户通过 sysfs 手动绑定、解绑|
+|true|不创建这两个属性文件，不提供该手动操作入口|
+
+静态初始化结构体时，不填写该成员，默认值为 false。
+
+以 platform 驱动为例，这两个入口通常位于：
+
+```
+/sys/bus/platform/drivers/驱动名称/bind
+/sys/bus/platform/drivers/驱动名称/unbind
+```
+
+手动解绑会解除设备与驱动的关系，并调用相应的 remove；手动绑定则会尝试重新探测设备。
+
+设置为 true 不会关闭正常的设备匹配和 probe 流程，也不会阻止卸载模块时执行 remove。它不是 GPIO 或字符设备的访问开关，也不是驱动必须设置的成员。
 
 可以简单理解为：
 
-```c
-struct device
-→ 一个具体设备
-
-struct device_driver
-→ 一个通用驱动
-
-struct bus_type
-→ 管理并匹配 device 和 device_driver
+```
+struct device        表示一个具体设备
+struct device_driver 表示一个通用驱动
+struct bus_type      管理并匹配设备与驱动
 ```
 
 很多具体驱动结构体会包含 struct device_driver，例如：
@@ -12850,38 +13735,143 @@ static struct platform_driver demo_driver = {
 
     .driver = {
         .name = "demo_device",
+        .suppress_bind_attrs = true, /* 可选：不提供手动 bind/unbind 入口 */
     },
 };
 ```
 
-这里的：
+这里的 driver 是嵌入的 struct device_driver，driver.name 和 driver.suppress_bind_attrs 都是它的成员。
 
-```c
-.driver
-→ struct device_driver
-
-.driver.name
-→ struct device_driver 中的 name 成员
-```
-
-也就是说：
-
-```
-struct platform_driver
-        │
-        └── struct device_driver driver
-                    │
-                    ├── name
-                    ├── bus
-                    ├── owner
-                    ├── of_match_table
-                    └── ...
-```
+|成员访问关系|含义|
+|---|---|
+|platform_driver.driver|内嵌的通用驱动对象|
+|platform_driver.driver.name|通用驱动对象中的驱动名称|
+|platform_driver.driver.suppress_bind_attrs|通用驱动对象中的绑定入口控制标志|
+|platform_driver.driver.of_match_table|通用驱动对象中的设备树匹配表|
 
 struct device_driver 是 Linux 设备模型中的**通用驱动对象**；struct platform_driver、PCI 驱动、USB 驱动等则是在它的基础上增加各自总线所需的信息。
 
-
 ### 函数
+
+#### MODULE_DEVICE_TABLE
+
+```c
+/**
+ * @brief  标记模块使用的设备匹配表，使构建工具生成模块别名信息，
+ *         供用户空间根据设备信息查找并自动加载对应模块。
+ *
+ * @param  type: 匹配表类型标识，不加引号。
+ *               例如 of、platform、i2c、spi、usb、pci。
+ * @param  name: 已定义的对应类型匹配表数组名，不加 &。
+ *
+ * @retval 无返回值: 宏展开为声明；编入内核而非模块时展开为空。
+ */
+#include <linux/module.h>
+
+/* 函数式宏的调用形式 */
+MODULE_DEVICE_TABLE(type, name);
+```
+
+以设备树匹配表为例：
+
+```c
+#include <linux/of.h>
+#include <linux/platform_device.h>
+
+static const struct of_device_id example_of_match[] = {
+    { .compatible = "vendor,example-device" },
+    { }
+};
+
+MODULE_DEVICE_TABLE(of, example_of_match);
+
+/* 将同一张表交给驱动核心，用于实际设备匹配 */
+static struct platform_driver example_driver = {
+    .driver = {
+        .name = "example-device",
+        .of_match_table = example_of_match,
+    },
+};
+```
+
+|内容|作用|
+|---|---|
+|MODULE_DEVICE_TABLE(of, example_of_match)|为模块构建提供匹配表信息，支持生成自动加载所需的别名|
+|.of_match_table = example_of_match|将匹配表交给驱动核心，用于运行时匹配设备|
+
+该宏不注册驱动，也不直接调用 probe。
+
+模块自动加载还需要正确安装模块、更新模块依赖和别名索引，并由用户空间的设备管理机制配合完成；仅添加该宏不能保证自动加载。
+
+#### **module_platform_driver**
+
+```c
+/**
+ * @brief  自动生成模块初始化和退出代码，
+ *         在加载时注册 platform 驱动，卸载时注销驱动。
+ *
+ * @param  __platform_driver: 已定义的 struct platform_driver
+ *                            变量名，直接传变量，不加 &。
+ *
+ * @retval 无返回值: 宏展开为函数定义及模块入口登记代码。
+ */
+#include <linux/platform_device.h>
+
+#define module_platform_driver(__platform_driver) \
+    module_driver(__platform_driver, platform_driver_register, \
+                  platform_driver_unregister)
+```
+
+适用于初始化、退出阶段只需要注册、注销 platform 驱动的模块。
+
+```c
+#include <linux/module.h>
+
+static int example_probe(struct platform_device *pdev)
+{
+    /* 初始化匹配到的设备 */
+    return 0;
+}
+
+static int example_remove(struct platform_device *pdev)
+{
+    /* 释放设备资源 */
+    return 0;
+}
+
+static struct platform_driver example_driver = {
+    .probe = example_probe,
+    .remove = example_remove,
+    .driver = {
+        .name = "example-device",
+    },
+};
+
+module_platform_driver(example_driver);
+
+MODULE_LICENSE("GPL");
+```
+
+示例中的驱动可按名称匹配同名 platform 设备；该宏只注册驱动，不负责创建设备。
+
+其作用相当于：
+
+```c
+static int __init example_driver_init(void)
+{
+    return platform_driver_register(&example_driver);
+}
+
+static void __exit example_driver_exit(void)
+{
+    platform_driver_unregister(&example_driver);
+}
+
+module_init(example_driver_init);
+module_exit(example_driver_exit);
+```
+
+一个模块只能使用一次，不能再同时定义另一组 module_init、module_exit。需要在模块入口执行额外操作时，应显式编写初始化、退出函数。
 #### platform_device_register
 
 ```c
@@ -13339,6 +14329,9 @@ platform_get_resource() 返回的是**资源结构体指针**，不是 start 的
 该函数经常在 platform_driver 的 probe() 中使用，用于取得与当前设备相关的硬件资源。
 
 ## **9.8 设备树**
+
+设备树用于描述硬件信息，例如设备地址、中断、GPIO 连接及引脚配置。内核和驱动解析这些描述，获取硬件资源并完成相应配置。本节整理设备树语法、常用属性及驱动中的解析接口。
+
 ### 编译
 
 **编译设备树文件**
@@ -13519,6 +14512,58 @@ struct property {
 
 通常通过 of_find_property() 获取对应的属性对象。
 
+#### of_device_id
+
+用于描述设备树匹配条件，通常组成数组，作为驱动的设备树匹配表。
+
+```c
+#include <linux/mod_devicetable.h>
+
+struct of_device_id {
+    char name[32];
+    char type[32];
+    char compatible[128];
+    const void *data;
+};
+```
+
+|成员|含义|
+|---|---|
+|name|匹配设备树节点名称，通常不填写|
+|type|匹配节点的 device_type 属性，通常不填写|
+|compatible|匹配节点的 compatible 属性，最常使用|
+|data|关联该匹配项的驱动自定义数据，不参与匹配|
+
+填写多个匹配条件时，要求同时满足；未填写的条件不作限制。
+
+```c
+#include <linux/module.h>
+#include <linux/platform_device.h>
+
+static const struct of_device_id example_of_match[] = {
+    { .compatible = "vendor,example-device" },
+    { } /* 全零项，标记数组结束 */
+};
+
+MODULE_DEVICE_TABLE(of, example_of_match);
+
+static struct platform_driver example_driver = {
+    .driver = {
+        .name = "example-device",
+        .of_match_table = example_of_match,
+    },
+};
+```
+
+对应设备树节点：
+
+```
+example {
+    compatible = "vendor,example-device";
+};
+```
+
+数组中多个有效项表示驱动支持多种设备，匹配其中一项即可；实际匹配需要将数组交给驱动的 of_match_table。
 ### 函数
 #### of_find_node_by_path
 
@@ -13943,7 +14988,7 @@ property    → 属性名
 ```
 
 实例：
-```
+```c dts
 /dts-v1/;
 
 #include <dt-bindings/input/input.h>
@@ -13985,6 +15030,8 @@ property    → 属性名
 
 
 ```
+
+
 ### 2. 属性值
 
 ```dts
@@ -14089,6 +15136,456 @@ chosen
 memory
 → 描述系统物理内存
 ```
+
+### 7. 查看设备树节点信息
+
+设备树运行后，可以通过 `/proc/device-tree/` 查看内核当前使用的设备树节点及其属性。
+
+**1. 查看设备树节点**
+
+```bash
+# 查看根节点下的所有节点
+ls /proc/device-tree/
+
+# 查看指定节点包含的属性
+ls /proc/device-tree/led@20c406c/
+```
+
+**2. 查看节点属性**
+
+```bash
+# 查看 compatible 属性
+tr -d '\0' < /proc/device-tree/led@20c406c/compatible
+
+# 查看 status 属性
+tr -d '\0' < /proc/device-tree/led@20c406c/status
+
+# 查看 reg 属性（二进制数据）
+hexdump -C /proc/device-tree/led@20c406c/reg
+```
+
+`tr -d '\0'` 用于去除字符串末尾的空字符；`hexdump -C` 用于以十六进制和字符形式显示二进制数据。
+
+**3. 导出完整设备树并转换为 DTS**
+
+以下命令在 Ubuntu 终端中执行，需要已经安装 `dtc` 工具。
+
+```bash
+# 从开发板导出当前使用的设备树
+adb pull /sys/firmware/fdt ./running.dtb
+
+# 将 DTB 转换为 DTS 文本文件
+dtc -I dtb -O dts running.dtb -o running.dts
+
+# 搜索指定节点及其附近内容
+grep -n -B 3 -A 12 'vanix,led' running.dts
+```
+
+参数说明：
+
+- `-I dtb`：指定输入格式为 DTB。
+    
+- `-O dts`：指定输出格式为 DTS。
+    
+- `-o running.dts`：指定输出文件名。
+    
+- `-B 3 -A 12`：显示匹配行之前 3 行、之后 12 行。
+    
+
+注意：`/proc/device-tree/` 展示的是内核当前使用的设备树；导出的 `running.dts` 也来源于开发板当前使用的 DTB，不一定与正在编辑的 DTS 源文件完全一致。
+
+
+## **9.9 pinctrl 子系统**
+
+**pinctrl 子系统负责管理芯片引脚的功能复用和电气属性，例如选择 GPIO、UART 等功能，以及配置上拉、下拉和驱动能力。本节整理引脚配置、设备树中的状态描述及相关接口。**
+
+### 设备树中的引脚配置
+
+#### i.MX6ULL
+
+pinctrl 配置用于描述引脚的复用功能和电气属性。通常先在引脚控制器下定义配置组，再由使用该引脚的设备引用。
+
+以 i.MX6ULL 的 SNVS_TAMPER3 引脚作为 GPIO5_IO03 控制 LED 为例：
+
+```c dts
+/* 如果已经通过其他文件间接包含，不需要重复添加 */
+#include "imx6ull-pinfunc-snvs.h"
+#include <dt-bindings/gpio/gpio.h>
+
+/* 实际添加到板级文件已有的根节点中 */
+ / {
+    led {
+        compatible = "vanix,led";
+        status = "okay";
+
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_led>;
+
+        led-gpios = <&gpio5 3 GPIO_ACTIVE_LOW>;
+    };
+};
+
+/* 实际添加到板级文件已有的对应控制器配置区域中 */
+&iomuxc_snvs {
+    pinctrl_led: ledgrp {
+        fsl,pins = <
+            MX6ULL_PAD_SNVS_TAMPER3__GPIO5_IO03 0x80000000
+        >;
+    };
+};
+```
+
+|内容|含义|
+|---|---|
+|&iomuxc_snvs|引用已有的 SNVS 引脚控制器节点，在其下面添加配置|
+|pinctrl_led:|自定义标签，供其他节点引用|
+|ledgrp|自定义节点名称，grp 是 group 的缩写，表示引脚组|
+|fsl,pins|i.MX 驱动约定的属性名，描述引脚复用和电气配置，不能随意改名|
+|pinctrl-names|按顺序定义引脚状态名称|
+|pinctrl-0|指定第 0 个状态所使用的配置|
+|&pinctrl_led|引用配置节点，不是将节点内容复制过来|
+|led-gpios|描述 LED 使用的 GPIO 和有效电平，属于 GPIO 配置|
+
+标签和配置节点名称可以自行命名；修改标签时，对应引用也要一起修改。
+
+pinctrl-names 中第 0 个名称对应 pinctrl-0，因此这里的 default 状态使用 pinctrl_led 配置组。一个状态可以引用多组配置，一个配置组也可以包含多个引脚。
+
+i.MX 平台的 fsl,pins 中，每个引脚通常写成：
+
+```
+引脚复用宏    电气配置值
+```
+
+示例中的宏展开为五个数：
+
+```
+0x0014    0x0058    0x0000    0x5    0x0
+复用偏移   电气偏移   输入选择偏移  复用模式  输入选择值
+```
+
+寄存器偏移相对于所属引脚控制器的基地址，因此宏必须与控制器配套，不能只根据 GPIO 功能名称选择。
+
+末尾的 0x80000000 是 i.MX 平台的特殊标志，表示不修改电气配置寄存器，保留已有电气属性；不是将该数值直接写入电气配置寄存器。
+
+设备树只描述配置。标准设备探测流程会在调用驱动 probe 前处理初始引脚状态；有 default、没有 init 时选择 default。仅定义配置组而没有引用、选择它，不代表硬件已经完成配置。
+
+pinctrl 配置引脚功能和电气属性；申请 GPIO、设置输出方向及控制亮灭，仍需要驱动通过 GPIO 接口完成。
+
+
+## **9.10 GPIO 子系统**
+
+**GPIO 子系统提供统一的通用输入输出接口，用于申请 GPIO、设置输入输出方向，以及读取和控制电平。本节整理 GPIO 的设备树描述、有效电平及驱动中常用的数据类型和接口。**
+
+### 宏
+
+#### GPIO_ACTIVE_*
+
+用于设备树中指定 GPIO 的有效电平。
+
+```c
+#include <dt-bindings/gpio/gpio.h>
+
+#define GPIO_ACTIVE_HIGH 0 /* 高电平有效 */
+#define GPIO_ACTIVE_LOW  1 /* 低电平有效 */
+```
+
+使用 GPIO 描述符的逻辑值读写接口时：
+
+|配置|逻辑 1：有效|逻辑 0：无效|
+|---|---|---|
+|GPIO_ACTIVE_HIGH|高电平|低电平|
+|GPIO_ACTIVE_LOW|低电平|高电平|
+
+```c
+/* LED 连接 GPIO5_IO03，低电平点亮 */
+led-gpios = <&gpio5 3 GPIO_ACTIVE_LOW>;
+```
+
+有效电平转换由 GPIO 子系统处理，驱动不需要再次手动反转。
+
+这些宏只描述有效电平，不负责配置输入输出方向、上拉下拉或中断触发方式。
+
+### 数据类型
+
+#### gpio_desc
+
+表示一个 GPIO 的描述符，由 GPIO 子系统管理。
+
+```c
+#include <linux/gpio/consumer.h>
+
+struct gpio_desc;
+```
+
+公开头文件只提供前置声明。使用者保存描述符指针，通过 GPIO 接口操作，不直接访问内部成员。
+
+```c
+struct output_data {
+    struct gpio_desc *gpio;
+};
+```
+
+该指针通过 devm_gpiod_get 等接口获取；GPIO 释放后不能继续使用。
+
+#### gpiod_flags
+
+获取 GPIO 时使用的初始化选项，用于指定方向和初始逻辑输出值。
+
+```c
+#include <linux/gpio/consumer.h>
+
+enum gpiod_flags {
+    GPIOD_ASIS = 0,
+    GPIOD_IN = GPIOD_FLAGS_BIT_DIR_SET,
+    GPIOD_OUT_LOW = GPIOD_FLAGS_BIT_DIR_SET |
+                    GPIOD_FLAGS_BIT_DIR_OUT,
+    GPIOD_OUT_HIGH = GPIOD_FLAGS_BIT_DIR_SET |
+                     GPIOD_FLAGS_BIT_DIR_OUT |
+                     GPIOD_FLAGS_BIT_DIR_VAL,
+};
+```
+
+| 枚举常量           | 作用             |
+| -------------- | -------------- |
+| GPIOD_ASIS     | 不主动修改方向及输出值    |
+| GPIOD_IN       | 设置为输入          |
+| GPIOD_OUT_LOW  | 设置为输出，初始逻辑值为 0 |
+| GPIOD_OUT_HIGH | 设置为输出，初始逻辑值为 1 |
+
+这些是枚举常量，不是宏；使用时选择其中一项，不通过按位或组合。
+
+GPIOD_OUT_LOW 中的 LOW 表示逻辑值为 0。若 GPIO 配置了 GPIO_ACTIVE_LOW，实际初始电平为高电平。
+
+### 函数
+
+#### devm_gpiod_get
+
+```c
+/**
+ * @brief  获取并申请设备使用的 GPIO，可同时配置方向和初始值；
+ *         资源由设备管理机制自动释放。
+ *
+ * @param  dev: 使用该 GPIO 的设备。
+ * @param  con_id: GPIO 功能名称，不包含 "-gpios" 后缀；
+ *                设备树中通常对应 "<con_id>-gpios" 属性。
+ *                NULL 表示不指定功能名称。
+ * @param  flags: 获取 GPIO 时的初始化选项：
+ *         GPIOD_ASIS：保留当前配置，不主动设置方向和初始值。
+ *         GPIOD_IN：配置为输入。
+ *         GPIOD_OUT_LOW：配置为输出，初始逻辑值为 0（无效）。
+ *         GPIOD_OUT_HIGH：配置为输出，初始逻辑值为 1（有效）。
+ *         GPIOD_OUT_LOW_OPEN_DRAIN：配置为开漏输出，初始逻辑值为 0。
+ *         GPIOD_OUT_HIGH_OPEN_DRAIN：配置为开漏输出，初始逻辑值为 1。
+ *
+ * @retval 有效指针: 获取成功，返回 GPIO 描述符。
+ * @retval 错误指针: 获取失败，通过 IS_ERR 判断、
+ *                  PTR_ERR 获取负错误码。
+ */
+#include <linux/gpio/consumer.h>
+
+struct gpio_desc *devm_gpiod_get(struct device *dev,
+                                const char *con_id,
+                                enum gpiod_flags flags);
+```
+
+示例中的 dev 来自当前设备的 probe 流程，设备树提供 enable-gpios 属性：
+
+```c
+#include <linux/err.h>
+
+static int setup_output(struct device *dev,
+                        struct gpio_desc **result)
+{
+    struct gpio_desc *gpio;
+
+    gpio = devm_gpiod_get(dev, "enable", GPIOD_OUT_LOW);
+    if (IS_ERR(gpio))
+        return PTR_ERR(gpio);
+
+    *result = gpio;
+    return 0;
+}
+
+static int example_probe(struct platform_device *pdev)
+{
+    struct gpio_desc *enable_gpio;
+    int ret;
+
+    /* 传入变量的地址，让 setup_output 填写这个变量 */
+    ret = setup_output(&pdev->dev, &enable_gpio);
+    if (ret < 0)
+        return ret;
+
+    /* 此时 enable_gpio 已经获得有效的 GPIO 描述符 */
+    gpiod_set_value_cansleep(enable_gpio, 1);
+
+    return 0;
+}
+```
+
+该调用申请 enable-gpios 指定的 GPIO，设置为输出，初始逻辑值为 0。
+
+GPIO 通常在 probe 失败或设备解绑时自动释放，不应再手动调用 gpiod_put。
+
+#### gpiod_get_value
+
+```c
+/**
+ * @brief  读取 GPIO 的逻辑值，要求底层访问不需要休眠。
+ *
+ * @param  desc: 已成功获取并配置好方向的 GPIO 描述符。
+ *
+ * @retval 0: GPIO 处于无效状态。
+ * @retval 1: GPIO 处于有效状态。
+ * @retval 负数: 读取失败，返回负错误码。
+ */
+#include <linux/gpio/consumer.h>
+
+int gpiod_get_value(const struct gpio_desc *desc);
+```
+
+返回的是逻辑值，会根据 GPIO_ACTIVE_LOW 自动转换：
+
+|有效电平配置|物理低电平|物理高电平|
+|---|---|---|
+|GPIO_ACTIVE_HIGH|0：无效|1：有效|
+|GPIO_ACTIVE_LOW|1：有效|0：无效|
+
+只能用于支持不休眠访问的 GPIO；满足此前提时，可在普通硬中断处理函数或持有自旋锁时调用。
+
+```c
+/* gpio 已成功获取，配置为输入，且底层访问不需要休眠 */
+struct gpio_desc *gpio = input_gpio;
+int value;
+
+value = gpiod_get_value(gpio);
+if (value < 0)
+    return value;
+
+/* 按键的有效电平已在 GPIO 配置中指定 */
+if (value)
+    pr_info("button pressed\n");
+```
+
+#### gpiod_set_value
+
+```c
+/**
+ * @brief  设置 GPIO 的逻辑值，要求底层访问不需要休眠。
+ *
+ * @param  desc: 已成功获取并配置为输出的 GPIO 描述符。
+ * @param  value: 0 表示无效，非零表示有效，通常使用 0 或 1。
+ *
+ * @retval 无: 函数没有返回值。
+ */
+#include <linux/gpio/consumer.h>
+
+void gpiod_set_value(struct gpio_desc *desc, int value);
+```
+
+设置的是逻辑值，会根据 GPIO_ACTIVE_LOW 自动转换：
+
+|有效电平配置|设置 0：无效|设置 1：有效|
+|---|---|---|
+|GPIO_ACTIVE_HIGH|输出低电平|输出高电平|
+|GPIO_ACTIVE_LOW|输出高电平|输出低电平|
+
+只能用于支持不休眠访问的 GPIO；满足此前提时，可在普通硬中断处理函数或持有自旋锁时调用。
+
+该函数不会禁止整个线程休眠，线程其他位置能否休眠取决于当时的执行环境。
+
+```c
+/* gpio 已成功获取，配置为输出，且底层访问不需要休眠 */
+struct gpio_desc *gpio = led_gpio;
+
+/* LED 的有效电平已在 GPIO 配置中指定 */
+gpiod_set_value(gpio, 1); /* 点亮 */
+gpiod_set_value(gpio, 0); /* 熄灭 */
+```
+#### gpiod_get_value_cansleep
+
+```c
+/**
+ * @brief  读取 GPIO 的逻辑值，允许底层访问过程休眠。
+ *
+ * @param  desc: 已成功获取且尚未释放的 GPIO 描述符。
+ *
+ * @retval 0: 逻辑无效状态。
+ * @retval 1: 逻辑有效状态。
+ * @retval 负错误码: 读取失败。
+ */
+#include <linux/gpio/consumer.h>
+
+int gpiod_get_value_cansleep(const struct gpio_desc *desc);
+```
+
+只能在允许休眠的上下文调用。配置 GPIO_ACTIVE_LOW 时，返回值已经经过有效电平转换。
+
+```c
+/* input 来自成功的 devm_gpiod_get(..., GPIOD_IN)。 */
+static int read_active_state(struct gpio_desc *input, bool *active)
+{
+    int ret;
+
+    ret = gpiod_get_value_cansleep(input);
+    if (ret < 0)
+        return ret;
+
+    *active = ret;
+    return 0;
+}
+```
+
+返回的是 GPIO 逻辑状态，不是按键事件或 LED 软件缓存状态。
+
+#### gpiod_set_value_cansleep
+
+```c
+/**
+ * @brief  设置 GPIO 的逻辑输出值，允许底层访问过程休眠。
+ *
+ * @param  desc: 已成功获取并配置为输出的 GPIO 描述符。
+ * @param  value: 逻辑输出值，通常使用 0 或 1；
+ *                0 表示无效，1 表示有效。
+ *
+ * @retval 无返回值。
+ */
+#include <linux/gpio/consumer.h>
+
+void gpiod_set_value_cansleep(struct gpio_desc *desc, int value);
+```
+
+只能在允许休眠的上下文调用，GPIO 必须已设置为输出。
+
+```c
+/* enable 来自成功的 devm_gpiod_get(..., GPIOD_OUT_LOW)。 */
+static void set_enabled(struct gpio_desc *enable, bool enabled)
+{
+    if (enabled)
+        gpiod_set_value_cansleep(enable, 1);
+    else
+        gpiod_set_value_cansleep(enable, 0);
+}
+```
+
+若配置 GPIO_ACTIVE_LOW，逻辑 1 输出低电平，逻辑 0 输出高电平。
+
+该函数没有错误返回值，不能通过判断返回值确认硬件操作是否成功。
+#### [[#gpiod_to_irq]]
+```c
+/**
+ * @brief  将 GPIO 描述符转换为对应的中断号。
+ *
+ * @param  desc: GPIO 描述符指针。
+ *
+ * @retval 非负数: 转换成功，返回中断号。
+ * @retval 负数: 转换失败，返回错误码。
+ */
+#include <linux/gpio/consumer.h>
+
+int gpiod_to_irq(const struct gpio_desc *desc);
+```
+
 #  imax6ull寄存器
 
 ## **GPIO 引脚查询**
