@@ -169,11 +169,11 @@
   "Linux/更改说明.md": {
     "cursor": {
       "from": {
-        "line": 16,
-        "ch": 25
+        "line": 14,
+        "ch": 19
       },
       "to": {
-        "line": 13,
+        "line": 12,
         "ch": 0
       }
     },
@@ -216,32 +216,79 @@
     ],
     "cursor": {
       "from": {
-        "line": 244,
-        "ch": 1
+        "line": 233,
+        "ch": 0
       },
       "to": {
-        "line": 244,
-        "ch": 1
+        "line": 233,
+        "ch": 0
       }
     },
-    "scroll": 0
+    "scroll": 217.74252275682704
   },
   "Linux/00_Linux笔记.md": {
     "expandedKeys": [
-      "item-1-543",
-      "item-2-547"
+      "item-1-366",
+      "item-2-414",
+      "item-3-417",
+      "item-3-415",
+      "item-3-420",
+      "item-1-0",
+      "item-2-55",
+      "item-2-404",
+      "item-3-407",
+      "item-2-386",
+      "item-3-389",
+      "item-2-380",
+      "item-3-383",
+      "item-3-491",
+      "item-3-493",
+      "item-3-495",
+      "item-2-568",
+      "item-3-574",
+      "item-1-183",
+      "item-3-198",
+      "item-3-202",
+      "item-3-191",
+      "item-2-184",
+      "item-2-195",
+      "item-3-472",
+      "item-3-465",
+      "item-3-503",
+      "item-3-501",
+      "item-3-498",
+      "item-2-217",
+      "item-3-218",
+      "item-4-220",
+      "item-3-213",
+      "item-2-208",
+      "item-3-225",
+      "item-3-185",
+      "item-4-186",
+      "item-1-352",
+      "item-3-353",
+      "item-3-223",
+      "item-2-541",
+      "item-3-429",
+      "item-3-431",
+      "item-3-434",
+      "item-3-445",
+      "item-3-450",
+      "item-3-447",
+      "item-2-460",
+      "item-3-461"
     ],
     "cursor": {
       "from": {
-        "line": 15690,
+        "line": 12631,
         "ch": 0
       },
       "to": {
-        "line": 15690,
+        "line": 12631,
         "ch": 0
       }
     },
-    "scroll": 15639.925291828793
+    "scroll": 12613.459077380952
   },
   "_README/笔记格式提示词_精简第五章.md": {
     "expandedKeys": [],
@@ -315,21 +362,20 @@
       "item-2-40",
       "item-2-31",
       "item-2-37",
-      "item-3-28",
       "item-2-20",
       "item-2-18"
     ],
     "cursor": {
       "from": {
-        "line": 694,
+        "line": 763,
         "ch": 0
       },
       "to": {
-        "line": 694,
+        "line": 763,
         "ch": 0
       }
     },
-    "scroll": 674.546875
+    "scroll": 760.9986979166666
   },
   "问题解决记录/未命名.md": {
     "expandedKeys": [],
@@ -338,18 +384,18 @@
   "问题解决记录/VS Code.md": {
     "cursor": {
       "from": {
-        "line": 80,
-        "ch": 0
+        "line": 0,
+        "ch": 10
       },
       "to": {
-        "line": 80,
-        "ch": 0
+        "line": 0,
+        "ch": 10
       }
     },
     "expandedKeys": [
       "item-1-0"
     ],
-    "scroll": 64.40625
+    "scroll": 0
   },
   "问题解决记录/Readme.md": {
     "cursor": {
@@ -367,15 +413,29 @@
   "问题解决记录/设计思想.md": {
     "cursor": {
       "from": {
-        "line": 21,
+        "line": 17,
         "ch": 0
       },
       "to": {
-        "line": 21,
+        "line": 17,
         "ch": 0
       }
     },
     "expandedKeys": [],
     "scroll": 12.128255208333334
+  },
+  "问题解决记录/问题记录.md": {
+    "cursor": {
+      "from": {
+        "line": 36,
+        "ch": 4
+      },
+      "to": {
+        "line": 36,
+        "ch": 4
+      }
+    },
+    "scroll": 16.526658767772513,
+    "expandedKeys": []
   }
 }

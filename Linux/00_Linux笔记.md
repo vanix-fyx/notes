@@ -1107,11 +1107,20 @@ lsmod
 查看 Linux 内核日志，驱动中 printk 输出的信息可以通过该命令查看。
 
 ```bash
-dmesg
+dmesg                  # 查看内核日志
+dmesg | tail -n 80     # 查看最后 80 行日志
+dmesg | grep -i key    # 筛选包含 key 的日志
+dmesg -w               # 实时查看新产生的内核日志
+dmesg -c               # 显示并清空内核日志缓冲区
 ```
 
----
-
+- 用于查看 Linux 内核日志，常用于排查驱动、设备树和硬件问题。
+    
+- `-i`：不区分大小写。
+    
+- `-w`：持续等待并显示新日志，具体支持情况取决于版本。
+    
+- `-c`：会清空日志缓冲区，谨慎使用。
 ### mknod
 
 手动创建设备节点。
@@ -4062,6 +4071,7 @@ int fstat(int fd, struct stat *statbuf);
 ```
 
 ## **7.2 多文件同时监视(I/O 多路复用)**
+### [[#I/O多路复用(poll)|驱动层poll]]
 
 **I/O 多路复用，就是让一个线程同时等待多个文件或设备，哪个就绪，就处理哪个。**
 ### 7.2.1 宏
@@ -5012,7 +5022,35 @@ if (ret == SIG_ERR)
 
 ### 7.4.2 数据类型
 
+#### sig_atomic_t
 
+```c
+#include <signal.h>
+
+volatile sig_atomic_t notify_flag = 0;
+```
+
+用于信号处理场景的整数类型，适合在信号处理函数中设置简单标志，并由程序检查该标志。
+
+- volatile：避免编译器不恰当地优化对变量的访问。
+    
+- sig_atomic_t：保证对该类型对象的单次访问具有信号场景下的原子性。
+    
+
+示例：
+
+```c
+#include <signal.h>
+
+static volatile sig_atomic_t notify_flag = 0;
+
+static void signal_handler(int signum)
+{
+    notify_flag = 1;
+}
+```
+
+注意：`volatile sig_atomic_t` 不是线程同步机制，不能保证多个线程之间的同步。
 ### 7.4.3 函数
 #### signal：设置信号处理方式
 
@@ -5068,9 +5106,58 @@ fcntl(fd, F_SETFL, flags | FASYNC);
  * SIGINT 通常可以通过 Ctrl+C 产生。
  */
 ```
+[[#fcntl：文件描述符控制函数]]
 
+#### sigwait
 
+```c
+/**
+ * @brief  等待指定信号集合中的信号，获取实际接收到的信号编号。
+ *
+ * @param  set: 要等待的信号集合。
+ * @param  sig: 用于保存接收到的信号编号。
+ *
+ * @retval 0: 成功。
+ * @retval 非 0: 失败，返回错误码。
+ */
+#include <signal.h>
 
+int sigwait(const sigset_t *set, int *sig);
+```
+
+使用前需要先阻塞要等待的信号。调用后，线程会等待信号到来，收到信号后返回，不需要编写信号处理函数。
+
+示例：
+
+```c
+#include <signal.h>
+#include <pthread.h>
+#include <stdio.h>
+
+int main(void)
+{
+    sigset_t set;
+    int sig;
+    int ret;
+
+    sigemptyset(&set);
+    sigaddset(&set, SIGIO);
+
+    /* 阻塞 SIGIO */
+    ret = pthread_sigmask(SIG_BLOCK, &set, NULL);
+    if (ret != 0)
+        return 1;
+
+    /* 等待 SIGIO */
+    ret = sigwait(&set, &sig);
+    if (ret == 0)
+        printf("收到信号：%d\n", sig);
+
+    return 0;
+}
+```
+
+注意：多线程程序应在创建其他线程之前阻塞相关信号，使新线程继承信号屏蔽设置。
 ## **7.5 进程与休眠**
 
 ### 7.5.1 函数
@@ -10148,20 +10235,16 @@ hello: major = 100
 ```c
 #include <linux/kernel.h>
 
-struct example {
-    int id;
-    int value;
-};
-
-static void example_usage(void)
+static int key_open(struct inode *inode, struct file *file)
 {
-    struct example obj = { .id = 1, .value = 100 };
-    int *value_ptr = &obj.value;
-    struct example *p;
+    struct key_dev *dev;
 
-    p = container_of(value_ptr, struct example, value);
-    /* p 等于 &obj，可以通过 p->id 访问原对象的 id */
+    dev = container_of(inode->i_cdev, struct key_dev, cdev);
+    file->private_data = dev;
+
+    return nonseekable_open(inode, file);
 }
+
 ```
 
 ptr 必须确实指向指定类型对象中的对应成员，不能仅凭指针类型相同就随意传入。
@@ -11338,19 +11421,925 @@ int devm_request_irq(struct device *dev,
 示例：
 
 ```c
-/* irq 已通过 gpiod_to_irq() 获取 */
+/* 中断处理函数 */
+static irqreturn_t key_irq_handler(int irq, void *dev_id)
+{
+    struct gpio_desc *gpio = dev_id;
+    int val;
+
+    val = gpiod_get_value(gpio);
+    if (val >= 0)
+        pr_info("key state: %d\n", val);
+
+    return IRQ_HANDLED;
+}
+
+/* 在 probe() 中注册中断 */
+struct gpio_desc *gpio;
+int irq;
+int ret;
+
+/* 1. 获取按键 GPIO */
+gpio = devm_gpiod_get_index(&pdev->dev, "key", 0, GPIOD_IN);
+if (IS_ERR(gpio))
+    return PTR_ERR(gpio);
+
+/* 2. 将 GPIO 描述符转换为中断号 */
+irq = gpiod_to_irq(gpio);
+if (irq < 0)
+    return irq;
+
+/* 3. 申请中断并注册处理函数 */
 ret = devm_request_irq(&pdev->dev, irq,
                        key_irq_handler,
                        IRQF_TRIGGER_RISING |
                        IRQF_TRIGGER_FALLING,
-                       "key", key_gpiod);
-
+                       "key", gpio);
 if (ret < 0)
     return ret;
 ```
 
-dev_id 会作为参数传给中断处理函数。使用 devm_request_irq() 申请的中断，在设备资源释放时由内核自动释放，通常不需要手动调用 free_irq()。
+这里以 i.MX6ULL 片内 GPIO 为例，处理函数中读取 GPIO 电平不会休眠。对于可能休眠的 GPIO 控制器，不能直接在硬中断处理函数中读取，应考虑线程化中断。
 
+#### devm_free_irq
+
+```c
+/**
+ * @brief  释放通过 devm_request_irq() 注册的中断资源。
+ *
+ * @param  dev: 申请中断时使用的设备指针。
+ * @param  irq: 需要释放的中断号。
+ * @param  dev_id: 申请中断时传入的设备标识指针，必须与注册时一致。
+ *
+ * @retval 无: 函数没有返回值。
+ *
+ * @note  仅用于释放通过 devm_request_irq() 等设备资源管理接口注册的中断。
+ *        使用 request_irq() 注册的中断，应使用 free_irq() 释放。
+ *        设备解绑时，内核也会自动释放尚未手动释放的托管中断资源。
+ */
+#include <linux/interrupt.h>
+
+void devm_free_irq(struct device *dev, unsigned int irq, void *dev_id);
+```
+
+用于释放通过 `devm_request_irq()` 注册的中断资源。
+
+与 `free_irq()` 相比，`devm_free_irq()` 会同时移除对应的设备资源管理记录，避免设备解绑时再次释放已经手动释放的中断。
+
+例如：
+
+```c
+devm_free_irq(&pdev->dev, key[i].irq, &key[i]);
+```
+
+其中，`&pdev->dev` 必须与注册中断时使用的设备指针一致，`&key[i]` 必须与 `devm_request_irq()` 中传入的 `dev_id` 一致。
+
+在驱动卸载时，如果中断处理函数可能调用 `mod_timer()`，应先释放中断，再使用 `del_timer_sync()` 删除定时器，防止中断处理函数在清理过程中再次启动定时器。
+
+注意：只能释放已经成功注册的中断。对于注册失败的中断，不应调用该函数释放。
+## **旧版软件定时器**
+
+### 完整示例
+
+下面实现每隔约 1 秒打印一次内核日志。
+
+```c
+#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/kernel.h>
+#include <linux/timer.h>
+#include <linux/jiffies.h>
+
+static struct timer_list mytimer;
+
+/* 定时器回调函数 */
+static void timer_callback(unsigned long data)
+{
+    pr_info("定时器触发\n");
+
+    /* 重新启动，实现周期定时 */
+    mod_timer(&mytimer,
+              jiffies + msecs_to_jiffies(1000));
+}
+
+/* 模块初始化 */
+static int __init timer_init(void)
+{
+    setup_timer(&mytimer, timer_callback, 0);
+
+    mod_timer(&mytimer,
+              jiffies + msecs_to_jiffies(1000));
+
+    return 0;
+}
+
+/* 模块卸载 */
+static void __exit timer_exit(void)
+{
+    del_timer_sync(&mytimer);
+}
+
+module_init(timer_init);
+module_exit(timer_exit);
+
+MODULE_LICENSE("GPL");
+```
+
+执行流程：
+
+1. 初始化定时器。
+    
+2. 启动定时器，约 1 秒后到期。
+    
+3. 内核执行 timer_callback。
+    
+4. 回调中再次启动定时器，实现周期性执行。
+    
+5. 模块卸载时同步删除定时器。
+    
+
+注意：定时器回调运行在软中断上下文，不能执行可能休眠的操作。
+### 宏
+#### HZ
+
+```c
+#include <linux/jiffies.h>
+
+/* HZ 是内核定义的宏，其数值由内核配置决定 */
+```
+
+HZ 表示内核每秒的时钟节拍数。
+
+例如：
+
+|HZ|每个时钟节拍对应的时间|
+|---|---|
+|100|10 ms|
+|250|4 ms|
+|1000|1 ms|
+
+```c
+unsigned long delay = HZ;      // 约 1 秒
+unsigned long half = HZ / 2;   // 约 500 毫秒
+```
+
+HZ 的实际值由目标内核配置决定，并不是所有 Linux 系统都相同。
+
+### 数据类型
+
+#### jiffies
+
+```c
+#include <linux/jiffies.h>
+
+extern unsigned long volatile jiffies;
+```
+
+jiffies 是 Linux 内核维护的时钟节拍计数变量，用于记录内核时间的推进。
+
+通常通过 **当前 jiffies + 延迟节拍数** 得到定时器的绝对到期时间。
+
+```c
+unsigned long expires;
+
+expires = jiffies + HZ;  // 约 1 秒后的到期时间
+```
+
+注意：jiffies 是 unsigned long 类型，在数值达到上限后可能回绕。比较时间先后应使用 time_after()、time_before() 等内核宏。
+
+#### struct timer_list
+
+```c
+#include <linux/timer.h>
+
+struct timer_list {
+    struct hlist_node entry;
+    unsigned l;ong expires;
+    void (*function)(unsigned long);
+    unsigned long data;
+    u32 flags;
+
+    /* 其他条件编译成员省略 */
+};
+```
+
+Linux 内核软件定时器的数据结构，用于记录定时器的到期时间、回调函数、回调参数以及内核管理信息。
+
+| 主要成员     | 说明                 |
+| -------- | ------------------ |
+| entry    | 内核管理定时器使用的链表节点     |
+| expires  | 绝对到期时间，单位为 jiffies |
+| function | 定时器到期后执行的回调函数      |
+| data     | 传递给回调函数的参数         |
+| flags    | 定时器相关标志            |
+
+定义示例：
+
+```c
+static struct timer_list mytimer;
+```
+
+定义后还需要初始化和启动，定时器才会正常工作。
+
+### 函数
+
+#### setup_timer
+
+```c
+/**
+ * @brief  初始化定时器，同时绑定回调函数和回调参数。
+ *
+ * @param  timer: 定时器结构体指针。
+ * @param  fn: 定时器到期后执行的回调函数。
+ * @param  data: 传递给回调函数的 unsigned long 参数。
+ *
+ * @retval 无: 函数式宏，无返回值。
+ */
+#include <linux/timer.h>
+
+#define setup_timer(timer, fn, data) \
+    __setup_timer((timer), (fn), (data), 0)
+```
+
+setup_timer 是 Linux 4.9 提供的**函数式宏**，初始化时会自动设置定时器回调函数和参数。
+
+```c
+static struct timer_list mytimer;
+
+static void timer_callback(unsigned long data)
+{
+    pr_info("定时器到期\n");
+}
+
+/* 初始化 */
+setup_timer(&mytimer, timer_callback, 0);
+```
+
+注意：setup_timer 只负责初始化，**不会启动定时器**。
+
+#### init_timer
+
+```c
+/**
+ * @brief  初始化定时器的内部管理状态。
+ *
+ * @param  timer: 定时器结构体指针。
+ *
+ * @retval 无: 函数式宏，无返回值。
+ */
+#include <linux/timer.h>
+
+#define init_timer(timer) \
+    __init_timer((timer), 0)
+```
+
+init_timer 是函数式宏，与 setup_timer 的主要区别是：**init_timer 不会自动设置回调函数和回调参数**，需要手动赋值。
+
+```c
+static struct timer_list mytimer;
+
+static void timer_callback(unsigned long data)
+{
+    pr_info("定时器到期\n");
+}
+
+init_timer(&mytimer);
+
+mytimer.function = timer_callback;
+mytimer.data = 0;
+```
+
+一般优先使用 setup_timer，代码更简洁。
+
+#### msecs_to_jiffies
+
+```c
+/**
+ * @brief  将毫秒转换为内核时钟节拍数。
+ *
+ * @param  m: 需要转换的毫秒数。
+ *
+ * @retval unsigned long: 转换后的节拍数。
+ */
+#include <linux/jiffies.h>
+
+static __always_inline unsigned long
+msecs_to_jiffies(const unsigned int m);
+```
+
+根据当前内核的 HZ 自动完成毫秒到 jiffies 的转换。
+
+```c
+unsigned long delay;
+
+delay = msecs_to_jiffies(20);  // 将 20ms 转换为节拍数
+```
+
+例如，HZ = 100 时，20ms 对应 2 个节拍。
+
+注意：转换结果受到内核节拍精度限制，不能保证任意毫秒数都能精确表示。
+
+#### add_timer
+
+```c
+/**
+ * @brief  将已初始化、尚未激活的定时器加入内核定时器队列。
+ *
+ * @param  timer: 定时器结构体指针。
+ *
+ * @retval 无: 无返回值。
+ */
+#include <linux/timer.h>
+
+void add_timer(struct timer_list *timer);
+```
+
+调用前必须初始化定时器，并设置 expires 到期时间。
+
+```c
+static struct timer_list mytimer;
+
+/* timer_callback 是已定义的定时器回调函数 */
+setup_timer(&mytimer, timer_callback, 0);
+
+/* 设置约 1 秒后的到期时间 */
+mytimer.expires = jiffies + msecs_to_jiffies(1000);
+
+/* 启动 */
+add_timer(&mytimer);
+```
+
+注意：不能对已经处于待触发状态的定时器重复调用 add_timer。如果需要修改到期时间，使用 mod_timer。
+
+#### mod_timer
+
+```c
+/**
+ * @brief  修改定时器的到期时间。
+ *         如果定时器未激活，也会将其启动。
+ *
+ * @param  timer: 定时器结构体指针。
+ * @param  expires: 新的绝对到期时间，单位为 jiffies。
+ *
+ * @retval 0: 定时器原本不处于待触发状态。
+ * @retval 1: 定时器原本处于待触发状态。
+ */
+#include <linux/timer.h>
+
+int mod_timer(struct timer_list *timer, unsigned long expires);
+```
+
+mod_timer 既可以启动定时器，也可以修改已经激活的定时器的到期时间，是最常用的定时器接口之一。
+
+```c
+static struct timer_list mytimer;
+
+/* timer_callback 是已定义的回调函数 */
+setup_timer(&mytimer, timer_callback, 0);
+
+/* 约 500ms 后触发 */
+mod_timer(&mytimer,
+          jiffies + msecs_to_jiffies(500));
+
+/* 修改为从现在起约 1000ms 后触发 */
+mod_timer(&mytimer,
+          jiffies + msecs_to_jiffies(1000));
+```
+
+如果在回调函数中再次调用 mod_timer，可以实现周期性定时。
+
+#### timer_pending
+
+```c
+/**
+ * @brief  判断定时器是否处于待触发状态。
+ *
+ * @param  timer: 定时器结构体指针。
+ *
+ * @retval 1: 定时器处于待触发状态。
+ * @retval 0: 定时器不处于待触发状态。
+ */
+#include <linux/timer.h>
+
+static inline int timer_pending(const struct timer_list *timer);
+```
+
+用于判断定时器是否已经被加入内核定时器队列、正在等待到期。
+
+```c
+static struct timer_list mytimer;
+
+/* 已初始化并启动 mytimer */
+
+if (timer_pending(&mytimer))
+    pr_info("定时器正在等待触发\n");
+```
+
+注意：返回 0 不代表回调函数一定没有在执行。
+
+#### del_timer
+
+```c
+/**
+ * @brief  删除待触发的定时器，取消后续触发。
+ *
+ * @param  timer: 定时器结构体指针。
+ *
+ * @retval 0: 定时器原本不处于待触发状态。
+ * @retval 1: 成功删除待触发的定时器。
+ */
+#include <linux/timer.h>
+
+int del_timer(struct timer_list *timer);
+```
+
+使用示例：
+
+```c
+static struct timer_list mytimer;
+
+/* 已初始化并启动 mytimer */
+
+/* 取消定时 */
+del_timer(&mytimer);
+```
+
+注意：如果回调函数已经在其他 CPU 上执行，del_timer 不会等待回调结束。
+
+因此，释放回调函数会访问的资源之前，通常更适合使用 del_timer_sync。
+
+#### del_timer_sync
+
+```c
+/**
+ * @brief  同步删除定时器，并等待正在执行的回调函数结束。
+ *
+ * @param  timer: 定时器结构体指针。
+ *
+ * @retval 0: 定时器原本不处于待触发状态。
+ * @retval 1: 成功删除待触发的定时器。
+ */
+#include <linux/timer.h>
+
+int del_timer_sync(struct timer_list *timer);
+```
+
+通常用于驱动卸载或清理资源时，确保定时器回调不再执行。
+
+```c
+static struct timer_list mytimer;
+
+/* mytimer 已初始化并在驱动运行期间启动 */
+
+static void __exit timer_exit(void)
+{
+    del_timer_sync(&mytimer);
+}
+```
+
+注意：
+
+- 不能在该定时器自己的回调函数中调用。
+    
+- 应在允许等待的上下文中使用，普通定时器不要在硬中断中同步删除。
+    
+- 需要确保其他执行路径不会再次启动该定时器。
+
+
+## **新版软件定时器**
+
+### 完整示例
+
+下面使用新版接口实现每隔约 1 秒打印一次内核日志。
+
+```c
+#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/kernel.h>
+#include <linux/timer.h>
+#include <linux/jiffies.h>
+
+static struct timer_list mytimer;
+
+/* 定时器回调函数 */
+static void timer_callback(struct timer_list *t)
+{
+    pr_info("定时器触发\n");
+
+    /* 重新启动，实现周期定时 */
+    mod_timer(&mytimer,
+              jiffies + msecs_to_jiffies(1000));
+}
+
+/* 模块初始化 */
+static int __init timer_init(void)
+{
+    timer_setup(&mytimer, timer_callback, 0);
+
+    mod_timer(&mytimer,
+              jiffies + msecs_to_jiffies(1000));
+
+    return 0;
+}
+
+/* 模块卸载 */
+static void __exit timer_exit(void)
+{
+    timer_shutdown_sync(&mytimer);
+}
+
+module_init(timer_init);
+module_exit(timer_exit);
+
+MODULE_LICENSE("GPL");
+```
+
+执行流程：
+
+1. 使用 timer_setup 初始化定时器。
+    
+2. 使用 mod_timer 启动定时器。
+    
+3. 约 1 秒后，内核执行回调函数。
+    
+4. 回调函数再次启动定时器，实现周期性执行。
+    
+5. 模块卸载时，使用 timer_shutdown_sync 同步清理定时器。
+
+### 宏
+
+#### HZ
+
+```
+#include <linux/jiffies.h>
+
+/* HZ 是内核定义的宏，其数值由内核配置决定 */
+```
+
+HZ 表示内核每秒的时钟节拍数。
+
+例如：
+
+|HZ|每个时钟节拍对应的时间|
+|---|---|
+|100|10 ms|
+|250|4 ms|
+|1000|1 ms|
+
+```
+unsigned long delay = HZ;      // 约 1 秒
+unsigned long half = HZ / 2;   // 约 500 毫秒
+```
+
+HZ 的实际值由目标内核配置决定，新旧版本的含义相同。
+
+### 数据类型
+
+#### jiffies
+
+```
+#include <linux/jiffies.h>
+
+extern unsigned long volatile jiffies;
+```
+
+jiffies 是 Linux 内核维护的时钟节拍计数变量，用于记录内核时间的推进。
+
+通常通过当前 jiffies 加上延迟节拍数，得到定时器的绝对到期时间。
+
+```
+unsigned long expires;
+
+expires = jiffies + HZ;  // 约 1 秒后的到期时间
+```
+
+jiffies 的作用与旧版相同。比较时间先后时，应使用 time_after()、time_before() 等内核宏。
+
+#### struct timer_list
+
+```
+#include <linux/timer.h>
+
+struct timer_list {
+    struct hlist_node entry;
+    unsigned long expires;
+    void (*function)(struct timer_list *);
+    u32 flags;
+
+    /* 根据内核配置，可能还有其他成员 */
+};
+```
+
+Linux 内核软件定时器的数据结构，用于保存定时器的到期时间、回调函数及内核管理信息。
+
+|主要成员|说明|
+|---|---|
+|entry|内核管理定时器使用的链表节点|
+|expires|绝对到期时间，单位为 jiffies|
+|function|定时器到期后执行的回调函数|
+|flags|定时器相关标志|
+
+与旧版相比，主要区别是：
+
+- function 的参数变为 struct timer_list 指针。
+    
+- 不再包含旧版的 data 成员。
+    
+- 如果需要获取所属设备结构体，可以使用 from_timer 宏。
+    
+
+定义示例：
+
+```
+static struct timer_list mytimer;
+```
+
+定义后仍需要初始化和启动定时器。
+
+
+### 函数
+#### from_timer
+
+```
+/**
+ * @brief  根据定时器指针，获取包含该定时器的外部结构体指针。
+ *
+ * @param  var: 用于接收外部结构体指针的变量名。
+ * @param  callback_timer: 定时器回调函数收到的 timer_list 指针。
+ * @param  timer_fieldname: 外部结构体中定时器成员的名称。
+ *
+ * @retval 无: 函数式宏，返回计算得到的外部结构体指针。
+ */
+#include <linux/timer.h>
+
+#define from_timer(var, callback_timer, timer_fieldname) \
+    container_of(callback_timer, typeof(*var), timer_fieldname)
+```
+
+新版定时器回调函数接收 struct timer_list 指针，不再通过旧版的 data 参数直接传递自定义数据。
+
+当定时器属于某个设备结构体时，可以使用 from_timer 获取该设备结构体指针。
+
+```
+struct my_device {
+    struct timer_list timer;
+    int value;
+};
+
+static void timer_callback(struct timer_list *t)
+{
+    struct my_device *dev;
+
+    dev = from_timer(dev, t, timer);
+
+    pr_info("value = %d\n", dev->value);
+}
+```
+
+其中 timer 是 my_device 结构体中定时器成员的名称。
+
+#### timer_setup
+
+```
+/**
+ * @brief  初始化定时器，并绑定回调函数及相关标志。
+ *
+ * @param  timer: 定时器结构体指针。
+ * @param  callback: 定时器到期后执行的回调函数。
+ * @param  flags: 定时器标志，通常填写 0。
+ *
+ * @retval 无: 函数式宏，无返回值。
+ */
+#include <linux/timer.h>
+
+#define timer_setup(timer, callback, flags) \
+    __timer_init((timer), (callback), (flags))
+```
+
+timer_setup 是新版定时器初始化接口，替代旧版的 setup_timer() 和 init_timer()。
+
+回调函数的格式：
+
+```
+static void timer_callback(struct timer_list *t)
+{
+    pr_info("定时器到期\n");
+}
+```
+
+使用示例：
+
+```
+static struct timer_list mytimer;
+
+timer_setup(&mytimer, timer_callback, 0);
+```
+
+注意：timer_setup 只负责初始化，不会启动定时器。
+
+#### msecs_to_jiffies
+
+```
+/**
+ * @brief  将毫秒转换为内核时钟节拍数。
+ *
+ * @param  m: 需要转换的毫秒数。
+ *
+ * @retval unsigned long: 转换后的节拍数。
+ */
+#include <linux/jiffies.h>
+
+static __always_inline unsigned long
+msecs_to_jiffies(const unsigned int m);
+```
+
+根据当前内核的 HZ，将毫秒转换为 jiffies。
+
+```
+unsigned long delay;
+
+delay = msecs_to_jiffies(20);  // 将 20ms 转换为节拍数
+```
+
+该函数在新旧内核中的用途基本相同，时间精度仍受内核时钟节拍影响。
+
+#### add_timer
+
+```
+/**
+ * @brief  将已初始化、尚未激活的定时器加入内核定时器队列。
+ *
+ * @param  timer: 定时器结构体指针。
+ *
+ * @retval 无: 无返回值。
+ */
+#include <linux/timer.h>
+
+void add_timer(struct timer_list *timer);
+```
+
+调用前必须完成定时器初始化，并设置 expires 到期时间。
+
+```
+static struct timer_list mytimer;
+
+/* timer_callback 是已定义的回调函数 */
+timer_setup(&mytimer, timer_callback, 0);
+
+/* 设置约 1 秒后的到期时间 */
+mytimer.expires = jiffies + msecs_to_jiffies(1000);
+
+add_timer(&mytimer);
+```
+
+注意：不能对已经处于待触发状态的定时器重复调用 add_timer。需要修改到期时间时，使用 mod_timer。
+
+#### mod_timer
+
+```
+/**
+ * @brief  修改定时器的到期时间；如果定时器未激活，也会将其启动。
+ *
+ * @param  timer: 定时器结构体指针。
+ * @param  expires: 新的绝对到期时间，单位为 jiffies。
+ *
+ * @retval 0: 定时器原本不处于待触发状态。
+ * @retval 1: 定时器原本处于待触发状态。
+ */
+#include <linux/timer.h>
+
+int mod_timer(struct timer_list *timer, unsigned long expires);
+```
+
+mod_timer 在新旧内核中的基本用法相同，既可以启动定时器，也可以修改已激活定时器的到期时间。
+
+```
+static struct timer_list mytimer;
+
+timer_setup(&mytimer, timer_callback, 0);
+
+/* 约 500ms 后触发 */
+mod_timer(&mytimer,
+          jiffies + msecs_to_jiffies(500));
+
+/* 修改为从现在起约 1000ms 后触发 */
+mod_timer(&mytimer,
+          jiffies + msecs_to_jiffies(1000));
+```
+
+如果在回调函数中再次调用 mod_timer，可以实现周期性定时。
+
+#### timer_pending
+
+```
+/**
+ * @brief  判断定时器是否处于待触发状态。
+ *
+ * @param  timer: 定时器结构体指针。
+ *
+ * @retval 1: 定时器处于待触发状态。
+ * @retval 0: 定时器不处于待触发状态。
+ */
+#include <linux/timer.h>
+
+static inline int timer_pending(const struct timer_list *timer);
+```
+
+用于判断定时器是否正在等待到期。
+
+```
+static struct timer_list mytimer;
+
+/* mytimer 已初始化并启动 */
+if (timer_pending(&mytimer))
+    pr_info("定时器正在等待触发\n");
+```
+
+注意：返回 0 不代表回调函数一定没有在执行。并发访问时还需要保证适当的同步。
+
+#### timer_delete
+
+```
+/**
+ * @brief  删除待触发的定时器，取消后续触发。
+ *
+ * @param  timer: 定时器结构体指针。
+ *
+ * @retval 0: 定时器原本不处于待触发状态。
+ * @retval 1: 成功删除待触发的定时器。
+ */
+#include <linux/timer.h>
+
+int timer_delete(struct timer_list *timer);
+```
+
+timer_delete 是较新内核提供的定时器删除接口，对应旧版的 del_timer()。
+
+```
+/* mytimer 已初始化并启动 */
+timer_delete(&mytimer);
+```
+
+注意：该函数不会等待正在其他 CPU 上执行的回调函数结束，也不会阻止其他代码重新启动定时器。
+
+#### timer_delete_sync
+
+```
+/**
+ * @brief  同步删除定时器，并等待正在执行的回调函数结束。
+ *
+ * @param  timer: 定时器结构体指针。
+ *
+ * @retval 0: 定时器原本不处于待触发状态。
+ * @retval 1: 成功删除待触发的定时器。
+ */
+#include <linux/timer.h>
+
+int timer_delete_sync(struct timer_list *timer);
+```
+
+timer_delete_sync 对应旧版的 del_timer_sync()，用于同步删除定时器并等待正在执行的回调函数结束。
+
+```
+/* mytimer 已初始化并启动 */
+timer_delete_sync(&mytimer);
+```
+
+注意：
+
+- 不能在该定时器自己的回调函数中调用。
+    
+- 不应在会阻止回调函数完成的锁仍被持有时调用。
+    
+- 必须确保其他执行路径不会在删除后再次启动定时器。
+
+
+#### timer_shutdown_sync
+
+```
+/**
+ * @brief  同步删除定时器，等待回调结束，并阻止定时器再次启动。
+ *
+ * @param  timer: 定时器结构体指针。
+ *
+ * @retval 0: 定时器原本不处于待触发状态。
+ * @retval 1: 成功删除待触发的定时器。
+ */
+#include <linux/timer.h>
+
+int timer_shutdown_sync(struct timer_list *timer);
+```
+
+timer_shutdown_sync 不仅会删除待触发的定时器并等待正在执行的回调结束，还会阻止该定时器被再次启动。
+
+```
+/* mytimer 已初始化并启动 */
+timer_shutdown_sync(&mytimer);
+```
+
+通常在驱动最终清理资源时使用，尤其适合回调函数可能重新启动定时器的场景。
+
+注意：该接口不会等待调用后才开始的其他线程完成；调用前仍需正确停止并发执行路径。该接口在较新的 Linux 内核中提供。
 
 
 ## 9.4 **文件与字符设备**
@@ -12051,7 +13040,7 @@ cdev_add 用于将初始化后的字符设备注册到内核。
 
 示例：
 
-```
+```c
 cdev_add(&my_cdev, devno, 1);
 ```
 
@@ -12285,6 +13274,8 @@ static const struct file_operations stream_fops = {
 ## **I/O多路复用(poll)**
 
 **I/O 多路复用，就是让一个线程同时等待多个文件或设备，哪个就绪，就处理哪个。**
+
+### [[#7.2 多文件同时监视(I/O 多路复用)|应用层poll]]
 ### 宏
 
 #### POLL*
@@ -12419,7 +13410,7 @@ POLL_MSG /* 有输入消息可用，较少使用 */
 |POLL_HUP|POLLHUP|
 
 两组名称相似，但用途不同，不能混用。按键产生可读事件时，使用 SIGIO 配合 POLL_IN。
-#### SIGIO(详见"7.4 信号")
+#### [[#信号编号宏]]
 
 ```c
 /* Linux 内核代码 */
@@ -12502,8 +13493,9 @@ static int demo_fasync(int fd, struct file *file, int on)
 
 static int demo_release(struct inode *inode, struct file *file)
 {
-    demo_fasync(-1, file, 0);
-    return 0;
+    struct dev *dev = file->private_data;
+
+    return fasync_helper(-1, file, 0, &dev->async_queue);
 }
 
 static const struct file_operations demo_fops = {
@@ -12533,7 +13525,7 @@ static const struct file_operations demo_fops = {
 void kill_fasync(struct fasync_struct **fp, int sig, int band);
 ```
 
-```
+```C
 #include <linux/fs.h>
 #include <linux/signal.h>
 
@@ -15426,6 +16418,53 @@ static int example_probe(struct platform_device *pdev)
 该调用申请 enable-gpios 指定的 GPIO，设置为输出，初始逻辑值为 0。
 
 GPIO 通常在 probe 失败或设备解绑时自动释放，不应再手动调用 gpiod_put。
+
+#### devm_gpiod_get_index
+
+```c
+/**
+ * @brief  获取指定索引的 GPIO 描述符，并根据标志配置方向及初始输出值。
+ *
+ * @param  dev: 获取 GPIO 的设备。
+ * @param  con_id: GPIO 连接名称，用于匹配设备树中的 GPIO 属性。
+ * @param  idx: GPIO 索引，从 0 开始。
+ * @param  flags: GPIO 方向及初始输出值配置，例如 GPIOD_IN。
+ *
+ * @retval 成功: 返回 GPIO 描述符指针。
+ * @retval 失败: 返回携带错误码的指针，应使用 IS_ERR() 和 PTR_ERR() 检查。
+ */
+#include <linux/gpio/consumer.h>
+
+struct gpio_desc *devm_gpiod_get_index(struct device *dev,
+                                      const char *con_id,
+                                      unsigned int idx,
+                                      enum gpiod_flags flags);
+```
+
+用于获取同一 GPIO 连接名称下指定索引的 GPIO，适合设备包含多个按键等 GPIO 的场景。
+
+- con_id 为 `"key"` 时，对应的设备树 GPIO 属性通常为 `key-gpios`。
+    
+- idx 为 0 表示第一个 GPIO，1 表示第二个 GPIO，以此类推。
+    
+- GPIOD_IN 表示将 GPIO 配置为输入。
+    
+- 该函数使用设备资源管理机制，设备解绑或 probe 失败时，已获取的 GPIO 资源会自动释放。
+    
+
+示例：
+
+```c
+struct gpio_desc *key_gpiod[KEY_NUM];
+
+for (i = 0; i < KEY_NUM; i++) {
+    key_gpiod[i] = devm_gpiod_get_index(
+        &pdev->dev, "key", i, GPIOD_IN);
+
+    if (IS_ERR(key_gpiod[i]))
+        return PTR_ERR(key_gpiod[i]);
+}
+```
 
 #### gpiod_get_value
 
